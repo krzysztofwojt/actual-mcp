@@ -231,6 +231,10 @@ async function main(): Promise<void> {
     const legacySseConnections = new Map<string, { server: Server; transport: SSEServerTransport }>();
     const streamableSessions = new Map<string, { server: Server; transport: StreamableHTTPServerTransport }>();
 
+    app.get('/healthz', (_req, res) => {
+      res.status(200).json({ status: 'ok', service: 'actual-mcp' });
+    });
+
     const parseSessionHeader = (value: string | string[] | undefined): string | undefined => {
       if (!value) {
         return undefined;

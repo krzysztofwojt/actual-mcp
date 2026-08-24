@@ -43,6 +43,7 @@ describe('import-transactions tool', () => {
       expect(properties).toHaveProperty('transactions');
       expect(properties).toHaveProperty('defaultCleared');
       expect(properties).toHaveProperty('dryRun');
+      expect(properties).toHaveProperty('reimportDeleted');
     });
   });
 
@@ -57,8 +58,8 @@ describe('import-transactions tool', () => {
       const args: ImportTransactionsArgs = {
         accountId: 'account-123',
         transactions: [
-          { date: '2025-01-01', amount: -50.0 },
-          { date: '2025-01-02', amount: -30.24, imported_id: 'bank-id-1' },
+          { date: '2025-01-01', amount: '-50.00' },
+          { date: '2025-01-02', amount: '-30.24', imported_id: 'bank-id-1' },
         ],
       };
 
@@ -70,7 +71,7 @@ describe('import-transactions tool', () => {
           { date: '2025-01-01', amount: -5000, account: 'account-123' },
           { date: '2025-01-02', amount: -3024, imported_id: 'bank-id-1', account: 'account-123' },
         ],
-        { defaultCleared: undefined, dryRun: undefined }
+        { defaultCleared: undefined, dryRun: undefined, reimportDeleted: undefined }
       );
       expect(result.isError).toBeUndefined();
       expect(textContent(result.content[0])).toContain('Added: 2 transaction(s)');
@@ -87,7 +88,7 @@ describe('import-transactions tool', () => {
 
       const args: ImportTransactionsArgs = {
         accountId: 'account-123',
-        transactions: [{ date: '2025-01-01', amount: -3.24 }],
+        transactions: [{ date: '2025-01-01', amount: '-3.24' }],
         dryRun: true,
       };
 
@@ -96,6 +97,7 @@ describe('import-transactions tool', () => {
       expect(actualApi.importTransactions).toHaveBeenCalledWith('account-123', expect.any(Array), {
         defaultCleared: undefined,
         dryRun: true,
+        reimportDeleted: undefined,
       });
       expect(result.isError).toBeUndefined();
       expect(textContent(result.content[0])).toContain('[DRY RUN]');
@@ -110,7 +112,7 @@ describe('import-transactions tool', () => {
 
       const args: ImportTransactionsArgs = {
         accountId: 'account-123',
-        transactions: [{ date: '2025-01-01', amount: -3.24 }],
+        transactions: [{ date: '2025-01-01', amount: '-3.24' }],
         defaultCleared: true,
       };
 
@@ -119,6 +121,7 @@ describe('import-transactions tool', () => {
       expect(actualApi.importTransactions).toHaveBeenCalledWith('account-123', expect.any(Array), {
         defaultCleared: true,
         dryRun: undefined,
+        reimportDeleted: undefined,
       });
       expect(result.isError).toBeUndefined();
     });
@@ -132,7 +135,7 @@ describe('import-transactions tool', () => {
 
       const args: ImportTransactionsArgs = {
         accountId: 'account-123',
-        transactions: [{ date: '2025-01-01', amount: -3.24 }],
+        transactions: [{ date: '2025-01-01', amount: '-3.24' }],
       };
 
       const result = await handler(args);
@@ -220,7 +223,7 @@ describe('import-transactions tool', () => {
 
       const args: ImportTransactionsArgs = {
         accountId: 'account-456',
-        transactions: [{ date: '2025-06-15', amount: 0 }],
+        transactions: [{ date: '2025-06-15', amount: '0.00' }],
       };
 
       const result = await handler(args);
@@ -239,8 +242,8 @@ describe('import-transactions tool', () => {
       const args: ImportTransactionsArgs = {
         accountId: 'account-456',
         transactions: [
-          { date: '2025-01-01', amount: -10.5, imported_id: 'new-id' },
-          { date: '2025-01-02', amount: -20.0, imported_id: 'existing-id' },
+          { date: '2025-01-01', amount: '-10.50', imported_id: 'new-id' },
+          { date: '2025-01-02', amount: '-20.00', imported_id: 'existing-id' },
         ],
       };
 
@@ -255,7 +258,7 @@ describe('import-transactions tool', () => {
   describe('handler - validation errors', () => {
     it('should return error when accountId is missing', async () => {
       const args = {
-        transactions: [{ date: '2025-01-01', amount: -3.24 }],
+        transactions: [{ date: '2025-01-01', amount: '-3.24' }],
       } as unknown as ImportTransactionsArgs;
 
       const result = await handler(args);
@@ -278,7 +281,7 @@ describe('import-transactions tool', () => {
     it('should return error when a transaction is missing date', async () => {
       const args = {
         accountId: 'account-123',
-        transactions: [{ amount: -3.24 }],
+        transactions: [{ amount: '-3.24' }],
       } as unknown as ImportTransactionsArgs;
 
       const result = await handler(args);
@@ -302,7 +305,7 @@ describe('import-transactions tool', () => {
     it('should return error when date format is invalid', async () => {
       const args = {
         accountId: 'account-123',
-        transactions: [{ date: '01/01/2025', amount: -3.24 }],
+        transactions: [{ date: '01/01/2025', amount: '-3.24' }],
       } as unknown as ImportTransactionsArgs;
 
       const result = await handler(args);
@@ -318,7 +321,7 @@ describe('import-transactions tool', () => {
 
       const args: ImportTransactionsArgs = {
         accountId: 'account-123',
-        transactions: [{ date: '2025-01-01', amount: -3.24 }],
+        transactions: [{ date: '2025-01-01', amount: '-3.24' }],
       };
 
       const result = await handler(args);

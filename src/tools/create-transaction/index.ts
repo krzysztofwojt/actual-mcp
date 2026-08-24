@@ -5,7 +5,8 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { toJSONSchema } from 'zod';
 import { successWithJson, errorFromCatch, error } from '../../utils/response.js';
-import { createTransaction } from '../../actual-api.js';
+import { createTransaction, getAccounts, getPayees } from '../../actual-api.js';
+import { resolveEntity } from '../../core/input/entity-resolver.js';
 import { resolveTransferPayee } from '../../core/data/resolve-transfer-payee.js';
 import { CreateTransactionArgsSchema, type CreateTransactionArgs, ToolInput } from '../../types.js';
 
@@ -22,16 +23,17 @@ export async function handler(args: CreateTransactionArgs): Promise<CallToolResu
     // Validate with Zod schema
     const validatedArgs = CreateTransactionArgsSchema.parse(args);
 
-    const { account: accountId, transfer_account_id, ...transactionData } = validatedArgs;
+    const { account: accountReference, transfer_account_id, ...transactionData } = validatedArgs;
+    const accounts = await getAccounts();
+    const accountId = resolveEntity(accountReference, accounts, (item) => item.name, 'account').id;
 
     // Reason: When transfer_account_id is provided, look up the transfer payee
     // so that addTransactions (with runTransfers: true) creates the counterpart automatically.
     if (transfer_account_id) {
-      const transferPayeeId = await resolveTransferPayee(transfer_account_id);
+      const destinationId = resolveEntity(transfer_account_id, accounts, (item) => item.name, 'account').id;
+      const transferPayeeId = await resolveTransferPayee(destinationId);
       if (!transferPayeeId) {
-        return error(
-          `No transfer payee found for account ${transfer_account_id}. Ensure the destination account exists.`
-        );
+        return error(`No transfer payee found for account ${destinationId}. Ensure the destination account exists.`);
       }
       transactionData.payee = transferPayeeId;
     }

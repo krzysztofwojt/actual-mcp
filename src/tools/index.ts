@@ -3,7 +3,10 @@
 // ----------------------------
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CallToolRequestSchema, ListToolsRequestSchema, Tool } from '@modelcontextprotocol/sdk/types.js';
+import { syncActual } from '../actual-api.js';
+import { executeMutation, withoutOperationId } from '../core/runtime/operation-runtime.js';
+import { withBudgetLock } from '../core/runtime/operation-queue.js';
 import { error, errorFromCatch } from '../utils/response.js';
 
 import * as balanceHistory from './balance-history/index.js';
@@ -55,6 +58,11 @@ import * as resetBudgetHold from './budgets/reset-budget-hold/index.js';
 import * as createTransaction from './create-transaction/index.js';
 import * as importTransactions from './import-transactions/index.js';
 import * as runBankSync from './run-bank-sync/index.js';
+import * as bankSyncStatus from './bank-sync-status/index.js';
+import { budgetReadTools, budgetWriteTools } from './budget/index.js';
+import { accountWriteTools } from './accounts/index.js';
+import { metadataReadTools, metadataWriteTools } from './metadata/index.js';
+import { scheduleReadTools, scheduleWriteTools } from './schedules/index.js';
 
 const readTools = [
   getTransactions,
@@ -74,6 +82,10 @@ const readTools = [
   getDashboards,
   getBudgetMonths,
   getBudgetMonth,
+  bankSyncStatus,
+  ...budgetReadTools,
+  ...metadataReadTools,
+  ...scheduleReadTools,
 ];
 
 const writeTools = [
@@ -109,7 +121,31 @@ const writeTools = [
   setBudgetCarryover,
   holdBudgetForNextMonth,
   resetBudgetHold,
+  ...budgetWriteTools,
+  ...accountWriteTools,
+  ...metadataWriteTools,
+  ...scheduleWriteTools,
 ];
+
+const writeToolNames = new Set(writeTools.map((tool) => tool.schema.name));
+
+function schemaWithOperationId(schema: Tool): Tool {
+  return {
+    ...schema,
+    inputSchema: {
+      ...schema.inputSchema,
+      properties: {
+        ...schema.inputSchema.properties,
+        operationId: {
+          type: 'string',
+          minLength: 8,
+          description: 'Required idempotency key. Reusing it with the same arguments returns the prior result.',
+        },
+      },
+      required: [...new Set([...(schema.inputSchema.required ?? []), 'operationId'])],
+    },
+  };
+}
 
 export const setupTools = (server: Server, enableWrite: boolean): void => {
   // Selecting available tools based on permissions
@@ -120,7 +156,9 @@ export const setupTools = (server: Server, enableWrite: boolean): void => {
    */
   server.setRequestHandler(ListToolsRequestSchema, () => {
     return {
-      tools: allTools.map((tool) => tool.schema),
+      tools: allTools.map((tool) =>
+        writeToolNames.has(tool.schema.name) ? schemaWithOperationId(tool.schema as Tool) : (tool.schema as Tool)
+      ),
     };
   });
 
@@ -129,15 +167,38 @@ export const setupTools = (server: Server, enableWrite: boolean): void => {
    */
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
-      const { name, arguments: args } = request.params;
+      const { name, arguments: rawArgs } = request.params;
 
       const tool = allTools.find((t) => t.schema.name === name);
       if (!tool) {
         return error(`Unknown tool ${name}`);
       }
 
-      // @ts-expect-error: Argument type is handled by Zod schema validation
-      return await tool.handler(args);
+      // Job status is durable local state and must remain observable while a long bank sync owns the budget lock.
+      if (name === 'get-bank-sync-status') {
+        // @ts-expect-error: Argument type is handled by the tool schema.
+        return tool.handler((rawArgs ?? {}) as Record<string, unknown>);
+      }
+
+      return await withBudgetLock(async () => {
+        const args = (rawArgs ?? {}) as Record<string, unknown>;
+        if (!writeToolNames.has(name)) {
+          await syncActual();
+          // @ts-expect-error: Argument type is handled by the tool schema.
+          return tool.handler(args);
+        }
+        if (typeof args.operationId !== 'string' || args.operationId.length < 8) {
+          return error('operationId is required for every mutating tool and must contain at least 8 characters');
+        }
+        const cleanArgs = withoutOperationId(args);
+        return executeMutation({
+          operationId: args.operationId,
+          tool: name,
+          args: cleanArgs,
+          // @ts-expect-error: Argument type is handled by the tool schema.
+          mutate: () => tool.handler(cleanArgs),
+        });
+      });
     } catch (err) {
       console.error(`Error executing tool ${request.params.name}:`, err);
       return errorFromCatch(err);

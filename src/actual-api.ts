@@ -11,6 +11,7 @@ import type { Handlers } from '@actual-app/core/types/handlers';
 import { ImportTransactionEntity } from '@actual-app/core/types/models/import-transaction';
 import { getActualConnection } from './integrations/actual/connection.js';
 import { BudgetMonth, TransactionData, UpdateTransactionData } from './types.js';
+import { parseMoney } from './core/input/money.js';
 
 /**
  * Ensures the shared Actual connection is ready.
@@ -28,6 +29,11 @@ export function initActualApi(): Promise<void> {
  */
 export function shutdownActualApi(): Promise<void> {
   return getActualConnection().drainAndClose();
+}
+
+/** Force a synchronization with Actual Server regardless of the configured TTL. */
+export async function syncActual(): Promise<void> {
+  await getActualConnection().run(() => api.sync());
 }
 
 /**
@@ -191,8 +197,23 @@ export function deleteCategoryGroup(id: string): Promise<unknown> {
 /**
  * Adds a transaction to an account and returns its identifier.
  */
-export function createTransaction(accountId: string, data: TransactionData): Promise<string> {
-  return getActualConnection().run(() => api.addTransactions(accountId, [data], { runTransfers: true }));
+export async function createTransaction(accountId: string, data: TransactionData): Promise<string> {
+  await initActualApi();
+  const before = await api.getTransactions(accountId, data.date, data.date);
+  const converted = {
+    ...data,
+    amount: parseMoney(data.amount),
+    subtransactions: data.subtransactions?.map((item) => ({ ...item, amount: parseMoney(item.amount) })),
+  };
+  await api.addTransactions(accountId, [converted], { runTransfers: true });
+  const previousIds = new Set(before.map((item) => item.id));
+  const created = (await api.getTransactions(accountId, data.date, data.date)).filter(
+    (item) => !previousIds.has(item.id) && item.amount === converted.amount
+  );
+  if (created.length !== 1) {
+    throw new Error(`TRANSACTION_CREATE_READBACK_MISMATCH: expected one new transaction, found ${created.length}`);
+  }
+  return created[0].id;
 }
 
 /**
@@ -201,7 +222,7 @@ export function createTransaction(accountId: string, data: TransactionData): Pro
 export function importTransactions(
   accountId: string,
   transactions: ImportTransactionEntity[],
-  opts?: { defaultCleared?: boolean; dryRun?: boolean }
+  opts?: { defaultCleared?: boolean; dryRun?: boolean; reimportDeleted?: boolean }
 ): Promise<{ added: string[]; updated: string[]; errors: Array<{ message: string }> }> {
   return getActualConnection().run(() => api.importTransactions(accountId, transactions, opts));
 }
@@ -209,8 +230,18 @@ export function importTransactions(
 /**
  * Updates a transaction with the supplied fields.
  */
-export function updateTransaction(id: string, data: UpdateTransactionData): Promise<unknown> {
-  return getActualConnection().run(() => api.updateTransaction(id, data as unknown as Partial<TransactionEntity>));
+export async function updateTransaction(id: string, data: UpdateTransactionData): Promise<unknown> {
+  await initActualApi();
+  const converted = {
+    ...data,
+    ...(data.amount === undefined ? {} : { amount: parseMoney(data.amount) }),
+    ...(data.subtransactions === undefined
+      ? {}
+      : { subtransactions: data.subtransactions.map((item) => ({ ...item, amount: parseMoney(item.amount) })) }),
+  };
+  const result = await api.updateTransaction(id, converted as unknown as Partial<TransactionEntity>);
+  if (!result.some((item) => item.id === id)) throw new Error(`TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}`);
+  return result;
 }
 
 /**

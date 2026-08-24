@@ -7,11 +7,14 @@ vi.mock('@actual-app/api', () => ({
   sync: vi.fn(),
   shutdown: vi.fn(),
   getAccounts: vi.fn(),
+  getTransactions: vi.fn(),
+  addTransactions: vi.fn(),
+  updateTransaction: vi.fn(),
   getAccountBalance: vi.fn(),
 }));
 
 import * as api from '@actual-app/api';
-import { getAccounts, getAccountBalance, getReports, initActualApi, shutdownActualApi } from './actual-api.js';
+import { createTransaction, updateTransaction, getAccounts, getAccountBalance, getReports, initActualApi, shutdownActualApi } from './actual-api.js';
 import { getActualConnection, resetActualConnectionForTests } from './integrations/actual/connection.js';
 
 describe('initActualApi syncing', () => {
@@ -46,16 +49,11 @@ describe('initActualApi syncing', () => {
     expect(api.downloadBudget).toHaveBeenCalledTimes(1);
   });
 
-  it('syncs once the data is older than the TTL', async () => {
+  it('syncs on every later call by default', async () => {
     await initActualApi();
-
-    vi.advanceTimersByTime(30_000);
     await initActualApi();
-    expect(api.sync).not.toHaveBeenCalled();
-
-    vi.advanceTimersByTime(31_000);
     await initActualApi();
-    expect(api.sync).toHaveBeenCalledTimes(1);
+    expect(api.sync).toHaveBeenCalledTimes(2);
   });
 
   it('honours ACTUAL_SYNC_TTL_MS', async () => {
@@ -76,12 +74,31 @@ describe('initActualApi syncing', () => {
     expect(api.sync).not.toHaveBeenCalled();
   });
 
-  it('keeps serving when a sync fails', async () => {
+  it('fails closed when a sync fails', async () => {
     await initActualApi();
     vi.mocked(api.sync).mockRejectedValueOnce(new Error('server unreachable'));
+    await expect(initActualApi()).rejects.toThrow('server unreachable');
+  });
 
-    vi.advanceTimersByTime(61_000);
-    await expect(initActualApi()).resolves.toBeUndefined();
+  it('converts exact decimal amounts and verifies a newly created transaction', async () => {
+    vi.mocked(api.getTransactions)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'txn-1', amount: 1234 }] as never);
+    vi.mocked(api.addTransactions).mockResolvedValue('ok');
+
+    await expect(createTransaction('account-1', { date: '2026-08-24', amount: '12.34' })).resolves.toBe('txn-1');
+    expect(api.addTransactions).toHaveBeenCalledWith(
+      'account-1',
+      [{ date: '2026-08-24', amount: 1234, subtransactions: undefined }],
+      { runTransfers: true }
+    );
+  });
+
+  it('fails an update when Actual does not return the updated transaction', async () => {
+    vi.mocked(api.updateTransaction).mockResolvedValue([]);
+    await expect(updateTransaction('txn-1', { amount: '12.34' })).rejects.toThrow(
+      'TRANSACTION_UPDATE_READBACK_MISMATCH'
+    );
   });
 });
 

@@ -2,7 +2,7 @@
 // DELETE RULE TOOL
 // ----------------------------
 
-import { deleteRule } from '../../../actual-api.js';
+import { deleteRule, getRules } from '../../../actual-api.js';
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
 
 export const schema = {
@@ -29,6 +29,9 @@ export async function handler(
     }
 
     await deleteRule(args.id);
+    if ((await getRules()).some((item) => item.id === args.id)) {
+      throw new Error(`RULE_DELETE_READBACK_MISMATCH: ${args.id}`);
+    }
 
     return successWithJson('Successfully deleted rule ' + args.id);
   } catch (err) {
