@@ -4,13 +4,18 @@ import { handler, schema } from './index.js';
 // CRITICAL: Mock before imports
 vi.mock('../../actual-api.js', () => ({
   updateTransaction: vi.fn(),
+  getAccounts: vi.fn(),
 }));
 
-import { updateTransaction } from '../../actual-api.js';
+import { getAccounts, updateTransaction } from '../../actual-api.js';
 
 describe('update-transaction tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(getAccounts).mockResolvedValue([
+      { id: 'acc-456', name: 'Existing account' },
+      { id: 'new-account-456', name: 'New account' },
+    ]);
   });
 
   describe('schema', () => {
@@ -33,7 +38,7 @@ describe('update-transaction tool', () => {
         id: 'txn-123',
         account: 'acc-456',
         date: '2024-01-15',
-        amount: -5000,
+        amount: '-50.00',
         payee: 'payee-789',
         category: 'cat-001',
         notes: 'Updated grocery expense',
@@ -45,7 +50,7 @@ describe('update-transaction tool', () => {
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
         account: 'acc-456',
         date: '2024-01-15',
-        amount: -5000,
+        amount: '-50.00',
         payee: 'payee-789',
         category: 'cat-001',
         notes: 'Updated grocery expense',
@@ -78,13 +83,13 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-123',
-        amount: -10050,
+        amount: '-100.50',
       };
 
       const result = await handler(args);
 
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
-        amount: -10050,
+        amount: '-100.50',
       });
       expect((result.content[0] as { text: string }).text).toContain('Updated fields: amount');
     });
@@ -155,8 +160,8 @@ describe('update-transaction tool', () => {
       const args = {
         id: 'txn-123',
         subtransactions: [
-          { amount: -3000, category: 'cat-groceries', notes: 'Food items' },
-          { amount: -2000, category: 'cat-household', notes: 'Cleaning supplies' },
+          { amount: '-30.00', category: 'cat-groceries', notes: 'Food items' },
+          { amount: '-20.00', category: 'cat-household', notes: 'Cleaning supplies' },
         ],
       };
 
@@ -164,8 +169,8 @@ describe('update-transaction tool', () => {
 
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
         subtransactions: [
-          { amount: -3000, category: 'cat-groceries', notes: 'Food items' },
-          { amount: -2000, category: 'cat-household', notes: 'Cleaning supplies' },
+          { amount: '-30.00', category: 'cat-groceries', notes: 'Food items' },
+          { amount: '-20.00', category: 'cat-household', notes: 'Cleaning supplies' },
         ],
       });
       expect(result.isError).toBeUndefined();
@@ -177,7 +182,7 @@ describe('update-transaction tool', () => {
       const args = {
         id: 'txn-123',
         date: '2024-03-01',
-        amount: -7500,
+        amount: '-75.00',
         category: 'cat-entertainment',
         notes: 'Movie tickets',
         cleared: true,
@@ -187,7 +192,7 @@ describe('update-transaction tool', () => {
 
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
         date: '2024-03-01',
-        amount: -7500,
+        amount: '-75.00',
         category: 'cat-entertainment',
         notes: 'Movie tickets',
         cleared: true,
@@ -202,13 +207,13 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-123',
-        amount: 0,
+        amount: '0.00',
       };
 
       const result = await handler(args);
 
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
-        amount: 0,
+        amount: '0.00',
       });
       expect(result.isError).toBeUndefined();
     });
@@ -218,13 +223,13 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-123',
-        amount: 150000,
+        amount: '1500.00',
       };
 
       await handler(args);
 
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
-        amount: 150000,
+        amount: '1500.00',
       });
     });
 
@@ -248,13 +253,13 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-123',
-        subtransactions: [{ amount: -5000 }],
+        subtransactions: [{ amount: '-50.00' }],
       };
 
       await handler(args);
 
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
-        subtransactions: [{ amount: -5000 }],
+        subtransactions: [{ amount: '-50.00' }],
       });
     });
 
@@ -301,7 +306,7 @@ describe('update-transaction tool', () => {
 
     it('should return error for missing transaction id', async () => {
       const args = {
-        amount: -5000,
+        amount: '-50.00',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any;
 
@@ -351,7 +356,7 @@ describe('update-transaction tool', () => {
     it('should reject payee_name even when combined with other valid fields', async () => {
       const args = {
         id: 'txn-123',
-        amount: -5000,
+        amount: '-50.00',
         payee_name: 'New Grocery Store',
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any;
@@ -369,7 +374,7 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-nonexistent',
-        amount: -5000,
+        amount: '-50.00',
       };
 
       const result = await handler(args);
@@ -397,7 +402,7 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-123',
-        amount: -1000,
+        amount: '-10.00',
       };
 
       const result = await handler(args);
@@ -412,7 +417,7 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-123',
-        amount: -5000,
+        amount: '-50.00',
         // Other fields are intentionally not provided
       };
 
@@ -420,7 +425,7 @@ describe('update-transaction tool', () => {
 
       // Should only have amount in the update call, not other undefined fields
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
-        amount: -5000,
+        amount: '-50.00',
       });
 
       // Verify no undefined fields were passed
@@ -433,7 +438,7 @@ describe('update-transaction tool', () => {
 
       const args = {
         id: 'txn-123',
-        amount: 0, // falsy but valid
+        amount: '0.00', // zero but valid
         cleared: false, // falsy but valid
         notes: '', // falsy but valid
         // These are undefined and should be filtered out:
@@ -446,7 +451,7 @@ describe('update-transaction tool', () => {
 
       // All falsy values should be included
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
-        amount: 0,
+        amount: '0.00',
         cleared: false,
         notes: '',
       });

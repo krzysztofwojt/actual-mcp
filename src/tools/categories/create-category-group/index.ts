@@ -3,7 +3,7 @@
 // ----------------------------
 
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
-import { createCategoryGroup } from '../../../actual-api.js';
+import { createCategoryGroup, getCategoryGroups } from '../../../actual-api.js';
 
 export const schema = {
   name: 'create-category-group',
@@ -33,8 +33,10 @@ export async function handler(
     };
 
     const id: string = await createCategoryGroup(data);
+    const created = (await getCategoryGroups()).find((item) => item.id === id);
+    if (!created) throw new Error(`CATEGORY_GROUP_READBACK_MISSING: ${id}`);
 
-    return successWithJson('Successfully created category group ' + id);
+    return successWithJson({ categoryGroup: created });
   } catch (err) {
     return errorFromCatch(err);
   }

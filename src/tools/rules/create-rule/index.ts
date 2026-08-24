@@ -3,7 +3,7 @@
 // ----------------------------
 
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
-import { createRule } from '../../../actual-api.js';
+import { createRule, getRules } from '../../../actual-api.js';
 import { RuleInputSchema } from '../input-schema.js';
 import { RuleEntity } from '@actual-app/core/types/models';
 
@@ -18,8 +18,10 @@ export async function handler(
 ): Promise<ReturnType<typeof successWithJson> | ReturnType<typeof errorFromCatch>> {
   try {
     const { id }: RuleEntity = await createRule(args);
+    const created = (await getRules()).find((item) => item.id === id);
+    if (!created) throw new Error(`RULE_READBACK_MISSING: ${id}`);
 
-    return successWithJson('Successfully created rule ' + id);
+    return successWithJson({ rule: created });
   } catch (err) {
     return errorFromCatch(err);
   }

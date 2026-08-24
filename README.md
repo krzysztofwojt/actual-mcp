@@ -1,6 +1,6 @@
 # Actual Budget MCP Server
 
-MCP server for integrating Actual Budget with Claude and other LLM assistants.
+Krzysztof's Actual Budget MCP fork for safe, complete day-to-day financial management by AI assistants.
 
 ## Overview
 
@@ -23,6 +23,21 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 - **`update-transaction`** - Update an existing transaction with new category, payee, notes, or amount
 - **`get-accounts`** - Retrieve a list of all accounts with their current balance and ID
 - **`balance-history`** - View account balance changes over time
+- **`delete-transaction`**, **`import-transactions`** - Delete or reconcile/import transactions
+- **`create-account`**, **`update-account`**, **`close-account`**, **`reopen-account`**, **`delete-account`** - Full account lifecycle
+- **`reconcile-account`** - Create and verify an explicit balance adjustment
+
+#### Budget
+
+- **`get-budget-month`**, **`set-budget-amount`**, **`move-budget`** - Read and edit monthly category budgets
+- **`set-budget-carryover`**, **`hold-budget-for-next-month`**, **`reset-budget-hold`** - Manage rollover and held money
+- **`apply-budget-strategy`** - Preview or apply batch zero/copy-previous strategies
+
+#### Schedules, tags, and notes
+
+- **`get-schedules`**, **`create-schedule`**, **`update-schedule`**, **`delete-schedule`**
+- **`get-tags`**, **`create-tag`**, **`update-tag`**, **`delete-tag`**, **`assign-transaction-tag`**
+- **`get-note`**, **`update-note`** - Read, set, or clear generic entity notes
 
 #### Reporting & Analytics
 
@@ -45,6 +60,7 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 - **`create-payee`** - Create a new payee
 - **`update-payee`** - Update an existing payee's details
 - **`delete-payee`** - Delete a payee
+- **`merge-payees`** - Merge duplicate payees into a selected target
 
 #### Rules
 
@@ -52,6 +68,13 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 - **`create-rule`** - Create a new transaction rule with conditions and actions
 - **`update-rule`** - Update an existing transaction rule
 - **`delete-rule`** - Delete a transaction rule
+
+#### Bank synchronization
+
+- **`run-bank-sync`** - Queue a real bank sync for all, on-budget, off-budget, or one existing account
+- **`get-bank-sync-status`** - Read durable asynchronous job status and history
+
+All mutating tools require an `operationId` idempotency key. They are serialized, synchronized before and after execution, audited, and validated with a readback. Amounts in write-tool inputs are exact decimal strings such as `"123.45"`. Conversational confirmation policy belongs to the AI client; the MCP enforces deterministic validation and safety invariants.
 
 ### Prompts
 
@@ -62,7 +85,7 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 
 ### Prerequisites
 
-- [Node.js](https://nodejs.org/) (v16 or higher)
+- [Node.js](https://nodejs.org/) (v24 or higher)
 - [Actual Budget](https://actualbudget.com/) installed and configured
 - [Claude Desktop](https://claude.ai/download) or another MCP-compatible client
 - [Docker Desktop](https://www.docker.com/products/docker-desktop) (optional)
@@ -72,7 +95,7 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 Pull the latest docker image:
 
 ```
-docker pull sstefanov/actual-mcp:latest
+docker pull ghcr.io/krzysztofwojt/actual-mcp:latest
 ```
 
 ### Local setup
@@ -80,7 +103,7 @@ docker pull sstefanov/actual-mcp:latest
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/s-stefanov/actual-mcp.git
+git clone https://github.com/krzysztofwojt/actual-mcp.git
 cd actual-mcp
 ```
 
@@ -154,7 +177,7 @@ Add the following to your configuration...
   "mcpServers": {
     "actualBudget": {
       "command": "npx",
-      "args": ["-y", "actual-mcp", "--enable-write"],
+      "args": ["-y", "github:krzysztofwojt/actual-mcp", "--enable-write"],
       "env": {
         "ACTUAL_DATA_DIR": "path/to/your/data",
         "ACTUAL_PASSWORD": "your-password",
@@ -164,6 +187,7 @@ Add the following to your configuration...
     }
   }
 }
+```
 
 ### a. Using Node.js (local only):
 
@@ -203,7 +227,7 @@ Add the following to your configuration...
         "ACTUAL_SERVER_URL=https://your-actual-server.com",
         "-e",
         "ACTUAL_BUDGET_SYNC_ID=your-budget-id",
-        "sstefanov/actual-mcp:latest",
+        "ghcr.io/krzysztofwojt/actual-mcp:latest",
         "--enable-write"
       ]
     }
@@ -229,7 +253,7 @@ docker run -i --rm \
   -e ACTUAL_SERVER_URL="http://your-actual-server.com" \
   -e ACTUAL_BUDGET_SYNC_ID="your-budget-id" \
   -e BEARER_TOKEN="your-bearer-token" \
-  sstefanov/actual-mcp:latest \
+  ghcr.io/krzysztofwojt/actual-mcp:latest \
   --sse --enable-write --enable-bearer
 ```
 
@@ -291,10 +315,13 @@ npx @modelcontextprotocol/inspector node build/index.js
 
 ## Fork Modifications
 
-This fork includes the following changes from the upstream [s-stefanov/actual-mcp](https://github.com/s-stefanov/actual-mcp):
+This public fork tracks upstream while using independent versions such as `1.12.1-kwojt.1` and images at `ghcr.io/krzysztofwojt/actual-mcp`.
 
-- **`@actual-app/api` bumped from `^26.3.0` to `^26.5.0`** — updates the Actual Budget API client to the latest version for compatibility with newer Actual server releases.
-- **Balance cutoff fix** — `getAccountBalance` calls now pass a far-future cutoff date (`2099-01-01`) so that future-dated pending transactions are included in balance calculations. Without this fix, banks that pre-date pending transactions (showing them in the future) would cause reported balances to be lower than the actual cleared balance.
+- Actual Server and `@actual-app/api` are pinned together; this release uses `26.8.1`.
+- Mutations use a durable idempotency ledger and structured audit logs retained for three months.
+- Exact ID or unique case-insensitive name resolution is supported; fuzzy write matching is intentionally rejected.
+- Bank synchronization is asynchronous and rejects concurrent runs.
+- The fork adds complete budget primitives, account lifecycle/reconciliation, schedules, tags, generic notes, and payee merging.
 
 ## License
 

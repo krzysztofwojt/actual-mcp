@@ -3,7 +3,8 @@
 // ----------------------------
 
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
-import { updateCategoryGroup } from '../../../actual-api.js';
+import { getCategoryGroups, updateCategoryGroup } from '../../../actual-api.js';
+import { resolveEntity } from '../../../core/input/entity-resolver.js';
 
 export const schema = {
   name: 'update-category-group',
@@ -13,7 +14,7 @@ export const schema = {
     properties: {
       id: {
         type: 'string',
-        description: 'ID of the category group. Should be in UUID format.',
+        description: 'Exact category group ID or unique case-insensitive name.',
       },
       name: {
         type: 'string',
@@ -32,11 +33,14 @@ export async function handler(
       return errorFromCatch('id is required and must be a string');
     }
 
+    const current = resolveEntity(args.id, await getCategoryGroups(), (item) => item.name, 'category_group');
     const data: Record<string, unknown> = { name: args.name };
 
-    await updateCategoryGroup(args.id, data);
+    await updateCategoryGroup(current.id, data);
+    const updated = (await getCategoryGroups()).find((item) => item.id === current.id);
+    if (!updated) throw new Error(`CATEGORY_GROUP_READBACK_MISSING: ${current.id}`);
 
-    return successWithJson('Successfully updated category ' + args.id);
+    return successWithJson({ categoryGroup: updated });
   } catch (err) {
     return errorFromCatch(err);
   }

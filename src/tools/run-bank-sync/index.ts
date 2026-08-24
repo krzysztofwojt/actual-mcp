@@ -1,60 +1,35 @@
-// ----------------------------
-// RUN BANK SYNC TOOL
-// ----------------------------
-
-import { z, toJSONSchema } from 'zod';
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { success, errorFromCatch } from '../../utils/response.js';
-import { runBankSync } from '../../actual-api.js';
+import { toJSONSchema, z } from 'zod';
+import { getAccounts } from '../../actual-api.js';
+import { resolveEntity } from '../../core/input/entity-resolver.js';
+import { startBankSyncJob } from '../../core/runtime/bank-sync-jobs.js';
 import type { ToolInput } from '../../types.js';
+import { errorFromCatch, successWithJson } from '../../utils/response.js';
 
 const RunBankSyncArgsSchema = z.object({
-  accountId: z
+  scope: z.enum(['all', 'onbudget', 'offbudget', 'account']).default('all'),
+  account: z
     .string()
+    .min(1)
     .optional()
-    .describe(
-      'Account ID to sync, or special value: "onbudget" (all on-budget), ' +
-        '"offbudget" (all off-budget). If omitted, syncs ALL linked accounts.'
-    ),
+    .describe('Exact account ID or unique account name; required when scope is account'),
 });
-
-type RunBankSyncArgs = z.infer<typeof RunBankSyncArgsSchema>;
 
 export const schema = {
   name: 'run-bank-sync',
-  description:
-    'Run bank synchronization (GoCardless/SimpleFIN) to download latest transactions. ' +
-    'Provide accountId for a specific account, use "onbudget"/"offbudget" for groups, ' +
-    'or omit to sync all linked accounts.',
+  description: 'Queue a real GoCardless/SimpleFIN bank sync. Returns immediately with a durable job ID.',
   inputSchema: toJSONSchema(RunBankSyncArgsSchema) as ToolInput,
 };
 
-export async function handler(args: RunBankSyncArgs): Promise<CallToolResult> {
+export async function handler(args: z.input<typeof RunBankSyncArgsSchema>): Promise<CallToolResult> {
   try {
-    const validatedArgs = RunBankSyncArgsSchema.parse(args);
-    const { accountId } = validatedArgs;
-
-    // API handles all sync logic natively:
-    // - specific ID → sync that account
-    // - "onbudget" → sync on-budget accounts
-    // - "offbudget" → sync off-budget accounts
-    // - undefined → sync ALL linked accounts
-    await runBankSync(accountId);
-
-    // Build user-friendly response
-    let message: string;
-    if (!accountId) {
-      message = 'Bank sync completed for all linked accounts.';
-    } else if (accountId === 'onbudget') {
-      message = 'Bank sync completed for all on-budget linked accounts.';
-    } else if (accountId === 'offbudget') {
-      message = 'Bank sync completed for all off-budget linked accounts.';
-    } else {
-      message = `Bank sync completed for account: ${accountId}`;
-    }
-
-    return success(message);
-  } catch (err) {
-    return errorFromCatch(err);
+    const { scope, account } = RunBankSyncArgsSchema.parse(args);
+    if (scope === 'account' && !account) throw new Error('BANK_SYNC_ACCOUNT_REQUIRED');
+    if (scope !== 'account' && account) throw new Error('BANK_SYNC_ACCOUNT_ONLY_WITH_ACCOUNT_SCOPE');
+    const target =
+      scope === 'account' ? resolveEntity(account!, await getAccounts(), (item) => item.name, 'account').id : scope;
+    return successWithJson({ job: startBankSyncJob(target) });
+  } catch (error) {
+    return errorFromCatch(error);
   }
 }

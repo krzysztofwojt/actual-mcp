@@ -1,7 +1,8 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { toJSONSchema } from 'zod';
 import { error, success, errorFromCatch } from '../../utils/response.js';
-import { updateTransaction } from '../../actual-api.js';
+import { getAccounts, updateTransaction } from '../../actual-api.js';
+import { resolveEntity } from '../../core/input/entity-resolver.js';
 import { UpdateTransactionArgsSchema, type UpdateTransactionArgs, ToolInput } from '../../types.js';
 
 export const schema = {
@@ -27,6 +28,9 @@ export async function handler(args: UpdateTransactionArgs): Promise<CallToolResu
 
     const validatedArgs = UpdateTransactionArgsSchema.parse(args);
     const { id: transactionId, ...updateData } = validatedArgs;
+    if (updateData.account) {
+      updateData.account = resolveEntity(updateData.account, await getAccounts(), (item) => item.name, 'account').id;
+    }
 
     // Filter out undefined values to only send fields that were explicitly provided
     const filteredUpdateData = Object.fromEntries(

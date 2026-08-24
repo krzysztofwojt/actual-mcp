@@ -3,7 +3,8 @@
 // ----------------------------
 
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
-import { updateCategory } from '../../../actual-api.js';
+import { getCategories, getCategoryGroups, updateCategory } from '../../../actual-api.js';
+import { resolveEntity } from '../../../core/input/entity-resolver.js';
 
 export const schema = {
   name: 'update-category',
@@ -13,7 +14,7 @@ export const schema = {
     properties: {
       id: {
         type: 'string',
-        description: 'ID of the category. Should be in UUID format.',
+        description: 'Exact category ID or unique case-insensitive name.',
       },
       name: {
         type: 'string',
@@ -21,7 +22,7 @@ export const schema = {
       },
       groupId: {
         type: 'string',
-        description: 'New ID for the category group. Should be in UUID format.',
+        description: 'Exact category group ID or unique group name.',
       },
     },
     required: ['id', 'name'],
@@ -36,17 +37,21 @@ export async function handler(
       return errorFromCatch('id is required and must be a string');
     }
 
+    const current = resolveEntity(args.id, await getCategories(), (item) => item.name, 'category');
     const data: Record<string, unknown> = {};
     if (args.name) {
       data.name = args.name;
     }
     if (args.groupId) {
-      data.group_id = args.groupId;
+      if (typeof args.groupId !== 'string') return errorFromCatch('groupId must be a string');
+      data.group_id = resolveEntity(args.groupId, await getCategoryGroups(), (item) => item.name, 'category_group').id;
     }
 
-    await updateCategory(args.id, data);
+    await updateCategory(current.id, data);
+    const updated = (await getCategories()).find((item) => item.id === current.id);
+    if (!updated) throw new Error(`CATEGORY_READBACK_MISSING: ${current.id}`);
 
-    return successWithJson('Successfully updated category ' + args.id);
+    return successWithJson({ category: updated });
   } catch (err) {
     return errorFromCatch(err);
   }

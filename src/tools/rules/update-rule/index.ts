@@ -3,7 +3,7 @@
 // ----------------------------
 
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
-import { updateRule } from '../../../actual-api.js';
+import { getRules, updateRule } from '../../../actual-api.js';
 import { RuleInputSchema } from '../input-schema.js';
 
 export const schema = {
@@ -21,8 +21,10 @@ export async function handler(
     }
 
     await updateRule(args);
+    const updated = (await getRules()).find((item) => item.id === args.id);
+    if (!updated) throw new Error(`RULE_READBACK_MISSING: ${args.id}`);
 
-    return successWithJson('Successfully updated rule ' + args.id);
+    return successWithJson({ rule: updated });
   } catch (err) {
     return errorFromCatch(err);
   }

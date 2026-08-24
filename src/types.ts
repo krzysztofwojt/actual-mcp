@@ -3,6 +3,11 @@ export type { Account, Transaction, Category, CategoryGroup, Payee } from './cor
 import { z } from 'zod';
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 
+const MoneyStringSchema = z
+  .string()
+  .regex(/^-?(?:0|[1-9]\d*)\.\d{2}$/, 'amount must be an exact decimal string such as 123.45');
+const MoneyInputSchema = MoneyStringSchema;
+
 export type ToolInput = Tool['inputSchema'];
 
 export interface BudgetFile {
@@ -67,7 +72,7 @@ export const UpdateSubtransactionSchema = z.object({
     .string()
     .optional()
     .describe('The ID of an existing subtransaction to update. Omit to add a new subtransaction.'),
-  amount: z.number().describe('Required for subtransactions. A currency amount as an integer'),
+  amount: MoneyInputSchema.describe('Required exact decimal amount, for example -12.34'),
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
 });
@@ -76,18 +81,13 @@ export type UpdateSubtransaction = z.infer<typeof UpdateSubtransactionSchema>;
 
 export const UpdateTransactionArgsSchema = z.object({
   id: z.string().describe('Required. The ID of the transaction to update'),
-  account: z.string().optional().describe('The ID of the account to move this transaction to'),
+  account: z.string().optional().describe('Exact account ID or unique account name to move this transaction to'),
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be in YYYY-MM-DD format')
     .optional()
     .describe('Transaction date in YYYY-MM-DD format'),
-  amount: z
-    .number()
-    .optional()
-    .describe(
-      'A currency amount as an integer representing the value without decimal places. For example, USD amount of $120.30 would be 12030'
-    ),
+  amount: MoneyInputSchema.optional().describe('Exact decimal amount, for example -12.34'),
   payee: z.string().optional().describe('An existing payee ID'),
   imported_payee: z
     .string()
@@ -117,7 +117,7 @@ export const UpdateTransactionDataSchema = UpdateTransactionArgsSchema.omit({ id
 export type UpdateTransactionData = z.infer<typeof UpdateTransactionDataSchema>;
 
 export const SubtransactionSchema = z.object({
-  amount: z.number().describe('Required for subtransactions. A currency amount as an integer'),
+  amount: MoneyInputSchema.describe('Required exact decimal amount, for example -12.34'),
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
 });
@@ -125,16 +125,12 @@ export const SubtransactionSchema = z.object({
 export type Subtransaction = z.infer<typeof SubtransactionSchema>;
 
 export const CreateTransactionArgsSchema = z.object({
-  account: z.string().describe('Required. The ID of the account this transaction belongs to'),
+  account: z.string().describe('Required. Exact account ID or unique case-insensitive account name'),
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be in YYYY-MM-DD format')
     .describe('Required. Transaction date in YYYY-MM-DD format'),
-  amount: z
-    .number()
-    .describe(
-      'Required. A currency amount as an integer representing the value without decimal places. For example, USD amount of $120.30 would be 12030'
-    ),
+  amount: MoneyInputSchema.describe('Required exact decimal amount, for example -12.34'),
   payee: z.string().optional().describe('An existing payee ID. This overrides payee_name if both are provided.'),
   payee_name: z
     .string()
@@ -181,29 +177,21 @@ export type CreateTransactionArgs = z.infer<typeof CreateTransactionArgsSchema>;
 export const TransactionDataSchema = CreateTransactionArgsSchema.omit({ account: true, transfer_account_id: true });
 export type TransactionData = z.infer<typeof TransactionDataSchema>;
 
-// Subtransaction schema for imports — amount is a decimal (e.g. 3.24), converted to integer by the API wrapper
+// Import amounts use exact decimal strings and are converted to integer minor units by the handler.
 export const ImportSubtransactionSchema = z.object({
-  amount: z
-    .number()
-    .describe(
-      'Required. Amount as a decimal number (e.g. 3.24 for $3.24). Negative for expenses, positive for income.'
-    ),
+  amount: MoneyStringSchema.describe('Required exact decimal amount, for example -3.24'),
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
 });
 
 // Schema for a single transaction item in a bulk import.
-// Accepts decimal amounts (e.g. 3.24) which are converted to integers by the API wrapper.
+// Accepts exact decimal strings which are converted to integer minor units by the handler.
 export const ImportTransactionItemSchema = z.object({
   date: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be in YYYY-MM-DD format')
     .describe('Required. Transaction date in YYYY-MM-DD format'),
-  amount: z
-    .number()
-    .describe(
-      'Required. Amount as a decimal number (e.g. 3.24 for $3.24). Negative for expenses, positive for income.'
-    ),
+  amount: MoneyStringSchema.describe('Required exact decimal amount, for example -3.24'),
   payee: z.string().optional().describe('An existing payee ID. This overrides payee_name if both are provided.'),
   payee_name: z
     .string()
@@ -251,6 +239,7 @@ export const ImportTransactionsArgsSchema = z.object({
     .optional()
     .describe('Default cleared state for all imported transactions (can be overridden per transaction)'),
   dryRun: z.boolean().optional().describe('If true, validate and preview the import without persisting any changes'),
+  reimportDeleted: z.boolean().optional().describe('Allow a previously deleted imported_id to be imported again'),
 });
 
 export type ImportTransactionsArgs = z.infer<typeof ImportTransactionsArgsSchema>;

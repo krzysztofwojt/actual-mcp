@@ -1,6 +1,6 @@
 {
-  "name": "actual-mcp",
-  "version": "1.12.1",
+  "name": "@krzysztofwojt/actual-mcp",
+  "version": "1.12.1-kwojt.1",
   "description": "Actual Budget MCP server exposing API functionality",
   "private": false,
   "main": "build/index.js",
@@ -61,13 +61,13 @@
   "publishConfig": {
     "access": "public"
   },
-  "homepage": "https://github.com/s-stefanov/actual-mcp",
+  "homepage": "https://github.com/krzysztofwojt/actual-mcp",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/s-stefanov/actual-mcp.git"
+    "url": "git+https://github.com/krzysztofwojt/actual-mcp.git"
   },
   "bugs": {
-    "url": "https://github.com/s-stefanov/actual-mcp/issues"
+    "url": "https://github.com/krzysztofwojt/actual-mcp/issues"
   },
   "keywords": [
     "mcp",

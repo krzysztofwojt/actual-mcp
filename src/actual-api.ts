@@ -6,9 +6,10 @@ import { BudgetFile, TransactionData, UpdateTransactionData } from './types.js';
 import { APIAccountEntity, APICategoryEntity, APICategoryGroupEntity, APIPayeeEntity } from '@actual-app/api/models';
 import { RuleEntity, TransactionEntity } from '@actual-app/core/types/models';
 import { ImportTransactionEntity } from '@actual-app/core/types/models/import-transaction';
+import { parseMoney } from './core/input/money.js';
 
 const DEFAULT_DATA_DIR: string = path.resolve(os.homedir() || '.', '.actual');
-const DEFAULT_SYNC_TTL_MS = 60_000;
+const DEFAULT_SYNC_TTL_MS = 0;
 
 // API initialization state
 let initialized = false;
@@ -37,8 +38,8 @@ function syncTtlMs(): number {
  * transactions added later are silently invisible. That is especially easy to
  * hit over SSE/HTTP, where a single process serves requests for days.
  *
- * A failed sync is logged but not thrown: answering from slightly stale data
- * beats failing the tool call outright.
+ * A failed sync is propagated. Financial tools must never silently answer from
+ * stale state after the caller explicitly requested a fresh server view.
  */
 async function syncIfStale(): Promise<void> {
   const ttl = syncTtlMs();
@@ -49,8 +50,16 @@ async function syncIfStale(): Promise<void> {
     await api.sync();
     lastSyncAt = Date.now();
   } catch (error) {
-    console.error('Failed to sync with Actual server, continuing with local data:', error);
+    console.error('Failed to sync with Actual server:', error);
+    throw error;
   }
+}
+
+/** Force a synchronization with Actual Server regardless of the configured TTL. */
+export async function syncActual(): Promise<void> {
+  if (!initialized) await initActualApi();
+  await api.sync();
+  lastSyncAt = Date.now();
 }
 
 /**
@@ -285,7 +294,21 @@ export async function deleteCategoryGroup(id: string): Promise<unknown> {
  */
 export async function createTransaction(accountId: string, data: TransactionData): Promise<string> {
   await initActualApi();
-  return api.addTransactions(accountId, [data], { runTransfers: true });
+  const before = await api.getTransactions(accountId, data.date, data.date);
+  const converted = {
+    ...data,
+    amount: parseMoney(data.amount),
+    subtransactions: data.subtransactions?.map((item) => ({ ...item, amount: parseMoney(item.amount) })),
+  };
+  await api.addTransactions(accountId, [converted], { runTransfers: true });
+  const previousIds = new Set(before.map((item) => item.id));
+  const created = (await api.getTransactions(accountId, data.date, data.date)).filter(
+    (item) => !previousIds.has(item.id) && item.amount === converted.amount
+  );
+  if (created.length !== 1) {
+    throw new Error(`TRANSACTION_CREATE_READBACK_MISMATCH: expected one new transaction, found ${created.length}`);
+  }
+  return created[0].id;
 }
 
 /**
@@ -295,7 +318,7 @@ export async function createTransaction(accountId: string, data: TransactionData
 export async function importTransactions(
   accountId: string,
   transactions: ImportTransactionEntity[],
-  opts?: { defaultCleared?: boolean; dryRun?: boolean }
+  opts?: { defaultCleared?: boolean; dryRun?: boolean; reimportDeleted?: boolean }
 ): Promise<{ added: string[]; updated: string[]; errors: Array<{ message: string }> }> {
   await initActualApi();
   return api.importTransactions(accountId, transactions, opts);
@@ -306,7 +329,16 @@ export async function importTransactions(
  */
 export async function updateTransaction(id: string, data: UpdateTransactionData): Promise<unknown> {
   await initActualApi();
-  return api.updateTransaction(id, data as unknown as Partial<TransactionEntity>);
+  const converted = {
+    ...data,
+    ...(data.amount === undefined ? {} : { amount: parseMoney(data.amount) }),
+    ...(data.subtransactions === undefined
+      ? {}
+      : { subtransactions: data.subtransactions.map((item) => ({ ...item, amount: parseMoney(item.amount) })) }),
+  };
+  const result = await api.updateTransaction(id, converted as unknown as Partial<TransactionEntity>);
+  if (!result.some((item) => item.id === id)) throw new Error(`TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}`);
+  return result;
 }
 
 /**

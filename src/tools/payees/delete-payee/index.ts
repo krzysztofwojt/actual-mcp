@@ -2,8 +2,9 @@
 // DELETE PAYEE TOOL
 // ----------------------------
 
-import { deletePayee } from '../../../actual-api.js';
+import { deletePayee, getPayees } from '../../../actual-api.js';
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
+import { resolveEntity } from '../../../core/input/entity-resolver.js';
 
 export const schema = {
   name: 'delete-payee',
@@ -13,7 +14,7 @@ export const schema = {
     properties: {
       id: {
         type: 'string',
-        description: 'ID of the payee. Should be in UUID format.',
+        description: 'Exact payee ID or unique case-insensitive name.',
       },
     },
     required: ['id'],
@@ -28,9 +29,13 @@ export async function handler(
       return errorFromCatch('id is required and must be a string');
     }
 
-    await deletePayee(args.id);
+    const current = resolveEntity(args.id, await getPayees(), (item) => item.name, 'payee');
+    await deletePayee(current.id);
+    if ((await getPayees()).some((item) => item.id === current.id)) {
+      throw new Error(`PAYEE_DELETE_READBACK_MISMATCH: ${current.id}`);
+    }
 
-    return successWithJson('Successfully deleted payee ' + args.id);
+    return successWithJson({ deletedPayeeId: current.id, deletedPayeeName: current.name });
   } catch (err) {
     return errorFromCatch(err);
   }

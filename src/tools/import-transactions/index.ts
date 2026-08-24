@@ -3,10 +3,10 @@
 // ----------------------------
 
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
-import { utils } from '@actual-app/api';
 import { toJSONSchema } from 'zod';
 import { success, errorFromCatch } from '../../utils/response.js';
 import { importTransactions } from '../../actual-api.js';
+import { parseMoney } from '../../core/input/money.js';
 import { ImportTransactionsArgsSchema, type ImportTransactionsArgs, ToolInput } from '../../types.js';
 
 export const schema = {
@@ -20,21 +20,21 @@ export const schema = {
 
 export async function handler(args: ImportTransactionsArgs): Promise<CallToolResult> {
   try {
-    const { accountId, transactions, defaultCleared, dryRun } = ImportTransactionsArgsSchema.parse(args);
+    const { accountId, transactions, defaultCleared, dryRun, reimportDeleted } =
+      ImportTransactionsArgsSchema.parse(args);
 
-    // Reason: decimal amounts (e.g. 3.24) from the tool input are converted to integers (e.g. 324)
-    // here before being passed to the API, which expects integer cents.
+    // Exact decimal strings are converted once to integer minor units for Actual's API.
     const entities = transactions.map((t) => ({
       ...t,
       account: accountId,
-      amount: utils.amountToInteger(t.amount),
+      amount: parseMoney(t.amount),
       subtransactions: t.subtransactions?.map((s) => ({
         ...s,
-        amount: utils.amountToInteger(s.amount),
+        amount: parseMoney(s.amount),
       })),
     }));
 
-    const result = await importTransactions(accountId, entities, { defaultCleared, dryRun });
+    const result = await importTransactions(accountId, entities, { defaultCleared, dryRun, reimportDeleted });
 
     const prefix = dryRun ? '[DRY RUN] ' : '';
     const summary =

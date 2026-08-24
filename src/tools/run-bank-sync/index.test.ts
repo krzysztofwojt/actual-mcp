@@ -1,96 +1,70 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { handler, schema } from './index.js';
 
 vi.mock('../../actual-api.js', () => ({
-  runBankSync: vi.fn(),
+  getAccounts: vi.fn(),
+}));
+vi.mock('../../core/runtime/bank-sync-jobs.js', () => ({
+  startBankSyncJob: vi.fn(),
 }));
 
-import { runBankSync } from '../../actual-api.js';
+import { getAccounts } from '../../actual-api.js';
+import { startBankSyncJob } from '../../core/runtime/bank-sync-jobs.js';
+
+const job = {
+  id: '03a65335-a12a-4309-a7ea-b38e294213ac',
+  scope: 'all',
+  status: 'queued',
+  createdAt: '2026-08-24T00:00:00Z',
+} as const;
 
 describe('run-bank-sync tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(startBankSyncJob).mockReturnValue(job);
+    vi.mocked(getAccounts).mockResolvedValue([{ id: 'acc-123', name: 'Checking' }]);
   });
 
-  describe('schema', () => {
-    it('should have correct name and description', () => {
-      expect(schema.name).toBe('run-bank-sync');
-      expect(schema.description).toContain('bank synchronization');
-    });
-
-    it('should have inputSchema defined', () => {
-      expect(schema.inputSchema).toBeDefined();
-      expect(schema.inputSchema.type).toBe('object');
-    });
+  it('publishes the asynchronous job contract', () => {
+    expect(schema.name).toBe('run-bank-sync');
+    expect(schema.description).toContain('job ID');
+    expect(schema.inputSchema.type).toBe('object');
   });
 
-  describe('handler - happy path', () => {
-    it('should sync specific account when accountId provided', async () => {
-      vi.mocked(runBankSync).mockResolvedValue(undefined);
-
-      const result = await handler({ accountId: 'acc-123' });
-
-      expect(runBankSync).toHaveBeenCalledWith('acc-123');
-      expect(result.content[0]).toHaveProperty('text');
-      expect((result.content[0] as { text: string }).text).toContain('acc-123');
-    });
-
-    it('should sync all accounts when no accountId provided', async () => {
-      vi.mocked(runBankSync).mockResolvedValue(undefined);
-
-      const result = await handler({});
-
-      expect(runBankSync).toHaveBeenCalledWith(undefined);
-      expect(result.content[0]).toHaveProperty('text');
-      expect((result.content[0] as { text: string }).text).toContain('all linked accounts');
-    });
-
-    it('should sync onbudget accounts with special value', async () => {
-      vi.mocked(runBankSync).mockResolvedValue(undefined);
-
-      const result = await handler({ accountId: 'onbudget' });
-
-      expect(runBankSync).toHaveBeenCalledWith('onbudget');
-      expect((result.content[0] as { text: string }).text).toContain('on-budget');
-    });
-
-    it('should sync offbudget accounts with special value', async () => {
-      vi.mocked(runBankSync).mockResolvedValue(undefined);
-
-      const result = await handler({ accountId: 'offbudget' });
-
-      expect(runBankSync).toHaveBeenCalledWith('offbudget');
-      expect((result.content[0] as { text: string }).text).toContain('off-budget');
-    });
+  it('queues all linked accounts by default', async () => {
+    const result = await handler({});
+    expect(startBankSyncJob).toHaveBeenCalledWith('all');
+    expect((result.content[0] as { text: string }).text).toContain(job.id);
   });
 
-  describe('handler - validation errors', () => {
-    it('should return error when accountId is not a string', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const result = await handler({ accountId: 123 } as any);
-
-      expect(result.isError).toBe(true);
-      expect(runBankSync).not.toHaveBeenCalled();
-    });
+  it.each(['onbudget', 'offbudget'] as const)('queues the %s scope', async (scope) => {
+    await handler({ scope });
+    expect(startBankSyncJob).toHaveBeenCalledWith(scope);
   });
 
-  describe('handler - API errors', () => {
-    it('should handle sync errors', async () => {
-      vi.mocked(runBankSync).mockRejectedValue(new Error('Bank sync failed'));
+  it('resolves a specific account by exact case-insensitive name', async () => {
+    await handler({ scope: 'account', account: 'checking' });
+    expect(startBankSyncJob).toHaveBeenCalledWith('acc-123');
+  });
 
-      const result = await handler({ accountId: 'acc-123' });
+  it('rejects account scope without an account', async () => {
+    const result = await handler({ scope: 'account' });
+    expect(result.isError).toBe(true);
+    expect(startBankSyncJob).not.toHaveBeenCalled();
+  });
 
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as { text: string }).text).toContain('Bank sync failed');
+  it('rejects account outside account scope', async () => {
+    const result = await handler({ scope: 'all', account: 'Checking' });
+    expect(result.isError).toBe(true);
+    expect(startBankSyncJob).not.toHaveBeenCalled();
+  });
+
+  it('returns queue errors', async () => {
+    vi.mocked(startBankSyncJob).mockImplementation(() => {
+      throw new Error('BANK_SYNC_ALREADY_RUNNING');
     });
-
-    it('should handle network errors', async () => {
-      vi.mocked(runBankSync).mockRejectedValue(new Error('Network error'));
-
-      const result = await handler({});
-
-      expect(result.isError).toBe(true);
-      expect((result.content[0] as { text: string }).text).toContain('Network error');
-    });
+    const result = await handler({});
+    expect(result.isError).toBe(true);
+    expect((result.content[0] as { text: string }).text).toContain('BANK_SYNC_ALREADY_RUNNING');
   });
 });
