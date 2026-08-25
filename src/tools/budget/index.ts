@@ -143,7 +143,7 @@ const strategyTool = defineTool(
     month: MonthSchema,
     strategy: z.enum(['zero', 'copy-previous']),
     categories: z.array(CategorySchema).min(1),
-    dryRun: z.boolean().optional().default(false),
+    dryRun: z.boolean().describe('Required. Set true to preview changes or false to apply them.'),
   }),
   async ({ month, strategy, categories, dryRun }) => {
     const resolved = await Promise.all(categories.map(category));

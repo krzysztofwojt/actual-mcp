@@ -122,7 +122,10 @@ const updateScheduleTool = defineTool(
     amount: z.string().optional(),
     amountOp: z.enum(['is', 'isapprox', 'isbetween']).optional(),
     amountEnd: z.string().optional(),
-    resetNextDate: z.boolean().default(true),
+    resetNextDate: z
+      .boolean()
+      .optional()
+      .describe('Override next-date recalculation. If omitted, recalculate only when date changes.'),
   }),
   async ({
     schedule: reference,
@@ -148,7 +151,8 @@ const updateScheduleTool = defineTool(
       ...(amountOp === undefined ? {} : { amountOp }),
     };
     if (!Object.keys(fields).length) throw new Error('NO_SCHEDULE_CHANGES');
-    await updateSchedule(current.id, fields, resetNextDate);
+    const shouldResetNextDate = resetNextDate ?? rest.date !== undefined;
+    await updateSchedule(current.id, fields, shouldResetNextDate);
     const updated = (await getSchedules()).find((item) => item.id === current.id);
     if (!updated) throw new Error(`SCHEDULE_READBACK_MISSING: ${current.id}`);
     return { schedule: present(updated) };

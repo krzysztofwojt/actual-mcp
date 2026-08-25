@@ -18,11 +18,11 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 
 #### Transaction & Account Management
 
-- **`get-transactions`** - Retrieve and filter transactions by account, date, amount, category, or payee, including native transfer and schedule link IDs
+- **`get-transactions`** - Retrieve and filter transactions by account, date, amount, category, or payee, including native transfer and schedule link IDs. Omitting `startDate`, `endDate`, or `limit` leaves that bound unrestricted; an explicit positive `limit` is applied after all other filters.
 - **`create-transaction`** - Create a new transaction in an account with optional category, payee, and notes
 - **`update-transaction`** - Update an existing transaction with new category, payee, notes, or amount
 - **`get-accounts`** - Retrieve a list of all accounts with their current balance and ID
-- **`balance-history`** - View account balance changes over time
+- **`balance-history`** - View balance changes for one account or, when `accountId` is omitted, an aggregate of open on-budget accounts. `months` defaults to 3; `includeOffBudget` affects only aggregate reports.
 - **`delete-transaction`**, **`import-transactions`** - Delete or reconcile/import transactions
 - **`create-account`**, **`update-account`**, **`close-account`**, **`reopen-account`**, **`delete-account`** - Full account lifecycle
 - **`reconcile-account`** - Create and verify an explicit balance adjustment
@@ -31,7 +31,7 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 
 - **`get-budget-month`**, **`set-budget-amount`**, **`move-budget`** - Read and edit monthly category budgets
 - **`set-budget-carryover`**, **`hold-budget-for-next-month`**, **`reset-budget-hold`** - Manage rollover and held money
-- **`apply-budget-strategy`** - Preview or apply batch zero/copy-previous strategies
+- **`apply-budget-strategy`** - Preview or apply batch zero/copy-previous strategies. `dryRun` is required so every request explicitly chooses preview or write.
 
 #### Schedules, tags, and notes
 
@@ -43,10 +43,12 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 
 Actual stores a posted schedule occurrence directly on the transaction in the native `transactions.schedule` field. These tools use the public `@actual-app/api.updateTransaction` mutation with either the schedule UUID or `null`, matching Actual 26.8.1's own Link schedule / Unlink schedule behavior. They reject automatic reassignment from another schedule and verify both the link and the transaction's protected financial fields by readback.
 
+When `update-schedule.resetNextDate` is omitted, the next occurrence is recalculated only if the schedule date or recurrence changes. An explicit boolean overrides that behavior.
+
 #### Reporting & Analytics
 
-- **`spending-by-category`** - Generate spending breakdowns categorized by type
-- **`monthly-summary`** - Get monthly income, expenses, and savings metrics
+- **`spending-by-category`** - Generate spending breakdowns categorized by type. Omitted date bounds are unrestricted; income is excluded unless `includeIncome` is true.
+- **`monthly-summary`** - Get monthly income, expenses, and savings metrics. `months` is a positive integer and defaults to 3.
 
 #### Categories
 
@@ -75,15 +77,15 @@ Actual stores a posted schedule occurrence directly on the transaction in the na
 
 #### Bank synchronization
 
-- **`run-bank-sync`** - Queue a real bank sync for all, on-budget, off-budget, or one existing account
+- **`run-bank-sync`** - Queue a real bank sync for all, on-budget, off-budget, or one existing account. `scope` is required; an empty request never defaults to all accounts.
 - **`get-bank-sync-status`** - Read durable asynchronous job status and history
 
 All mutating tools require an `operationId` idempotency key. They are serialized, synchronized before and after execution, audited, and validated with a readback. Amounts in write-tool inputs are exact decimal strings such as `"123.45"`. Conversational confirmation policy belongs to the AI client; the MCP enforces deterministic validation and safety invariants.
 
 ### Prompts
 
-- **`financial-insights`** - Generate insights and recommendations based on your financial data
-- **`budget-review`** - Analyze your budget compliance and suggest adjustments
+- **`financial-insights`** - Generate insights and recommendations. Omitted dates use a recent three-month period ending today (or ending at an explicitly supplied `endDate`).
+- **`budget-review`** - Analyze your budget compliance and suggest adjustments. `months` defaults to 3 and must be a positive integer.
 
 ## Installation
 
@@ -139,11 +141,11 @@ export ACTUAL_DATA_DIR="/path/to/your/actual/data"
 export ACTUAL_SERVER_URL="https://your-actual-server.com"
 export ACTUAL_PASSWORD="your-password"
 
-# Specific budget to use (optional)
+# Specific budget to use. Optional only when the server exposes exactly one budget.
 export ACTUAL_BUDGET_SYNC_ID="your-budget-id"
 
 # How long downloaded data stays fresh before the server re-syncs, in ms
-# (default: 60000). Use 0 to sync before every call, or -1 to never sync.
+# (default: 0). Use 0 to sync before every call, or -1 to never sync.
 export ACTUAL_SYNC_TTL_MS="60000"
 ```
 

@@ -21,6 +21,7 @@ import type { BudgetMonth } from '../../domain/budget-api.js';
 
 const setTool = budgetWriteTools.find((item) => item.schema.name === 'set-budget-amount')!;
 const moveTool = budgetWriteTools.find((item) => item.schema.name === 'move-budget')!;
+const strategyTool = budgetWriteTools.find((item) => item.schema.name === 'apply-budget-strategy')!;
 
 function month(first = 1000, second = 2000): BudgetMonth {
   return {
@@ -84,5 +85,28 @@ describe('budget tools', () => {
     const result = await setTool.handler({ month: '2026-08', category: 'Food', amount: '1.00' } as never);
     expect(result.isError).toBe(true);
     expect(textContent(result.content[0])).toContain('budget unavailable');
+  });
+
+  it('requires an explicit dryRun choice before applying a budget strategy', async () => {
+    const result = await strategyTool.handler({
+      month: '2026-08',
+      strategy: 'zero',
+      categories: ['Food'],
+    } as never);
+
+    expect(result.isError).toBe(true);
+    expect(setBudgetAmount).not.toHaveBeenCalled();
+  });
+
+  it('previews a budget strategy without writing when dryRun is true', async () => {
+    const result = await strategyTool.handler({
+      month: '2026-08',
+      strategy: 'zero',
+      categories: ['Food'],
+      dryRun: true,
+    } as never);
+
+    expect(result.isError).toBeUndefined();
+    expect(setBudgetAmount).not.toHaveBeenCalled();
   });
 });

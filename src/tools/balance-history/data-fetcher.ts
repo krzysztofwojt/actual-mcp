@@ -2,11 +2,12 @@
 import { fetchAllAccounts } from '../../core/data/fetch-accounts.js';
 import { fetchAllTransactions, fetchTransactionsForAccount } from '../../core/data/fetch-transactions.js';
 import type { Account, Transaction } from '../../core/types/domain.js';
-import api from '@actual-app/api';
+import { fetchCurrentAccountBalance } from '../../core/data/account-balance.js';
 
 export class BalanceHistoryDataFetcher {
   async fetchAll(
     accountId: string | undefined,
+    includeOffBudget: boolean,
     start: string,
     end: string
   ): Promise<{
@@ -15,19 +16,28 @@ export class BalanceHistoryDataFetcher {
     transactions: Transaction[];
   }> {
     const accounts = await fetchAllAccounts();
-    const account = accounts.find((a) => a.id === accountId);
+    const account = accountId ? accounts.find((a) => a.id === accountId) : undefined;
+
+    if (accountId && !account) {
+      throw new Error(`ACCOUNT_NOT_FOUND: ${accountId}`);
+    }
 
     let transactions: Transaction[] = [];
-    if (accountId && account) {
-      transactions = await fetchTransactionsForAccount(accountId, start, end);
-      account.balance = await api.getAccountBalance(accountId, new Date('2099-01-01'));
+    let selectedAccounts: Account[];
+    if (account) {
+      transactions = await fetchTransactionsForAccount(account.id, start, end);
+      account.balance = await fetchCurrentAccountBalance(account.id);
+      selectedAccounts = [account];
     } else {
-      transactions = await fetchAllTransactions(accounts, start, end);
-      for (const a of accounts) {
-        a.balance = await api.getAccountBalance(a.id, new Date('2099-01-01'));
+      selectedAccounts = accounts.filter(
+        (candidate) => !candidate.closed && (includeOffBudget || !candidate.offbudget)
+      );
+      transactions = await fetchAllTransactions(selectedAccounts, start, end);
+      for (const a of selectedAccounts) {
+        a.balance = await fetchCurrentAccountBalance(a.id);
       }
     }
 
-    return { account, accounts, transactions };
+    return { account, accounts: selectedAccounts, transactions };
   }
 }

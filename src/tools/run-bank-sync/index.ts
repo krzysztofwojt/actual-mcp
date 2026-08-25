@@ -7,7 +7,9 @@ import type { ToolInput } from '../../types.js';
 import { errorFromCatch, successWithJson } from '../../utils/response.js';
 
 const RunBankSyncArgsSchema = z.object({
-  scope: z.enum(['all', 'onbudget', 'offbudget', 'account']).default('all'),
+  scope: z
+    .enum(['all', 'onbudget', 'offbudget', 'account'])
+    .describe('Required explicit sync scope. Use all only when all linked accounts should be synchronized.'),
   account: z
     .string()
     .min(1)

@@ -73,4 +73,38 @@ describe('schedule tools', () => {
     } as never);
     expect(result.isError).toBe(true);
   });
+
+  it('does not reset the next date for a metadata-only update', async () => {
+    vi.mocked(scheduleApi.getSchedules).mockResolvedValue([
+      { id: 's1', name: 'Rent', amountOp: 'is', date: '2026-09-01', posts_transaction: false },
+    ]);
+    vi.mocked(scheduleApi.updateSchedule).mockResolvedValue('s1');
+
+    const result = await handler('update-schedule')({ schedule: 's1', name: 'New rent name' } as never);
+
+    expect(scheduleApi.updateSchedule).toHaveBeenCalledWith('s1', { name: 'New rent name' }, false);
+    expect(result.isError).toBeUndefined();
+  });
+
+  it('resets the next date when the schedule date changes', async () => {
+    vi.mocked(scheduleApi.getSchedules).mockResolvedValue([
+      { id: 's1', name: 'Rent', amountOp: 'is', date: '2026-09-01', posts_transaction: false },
+    ]);
+    vi.mocked(scheduleApi.updateSchedule).mockResolvedValue('s1');
+
+    await handler('update-schedule')({ schedule: 's1', date: '2026-10-01' } as never);
+
+    expect(scheduleApi.updateSchedule).toHaveBeenCalledWith('s1', { date: '2026-10-01' }, true);
+  });
+
+  it('honours an explicit resetNextDate override', async () => {
+    vi.mocked(scheduleApi.getSchedules).mockResolvedValue([
+      { id: 's1', name: 'Rent', amountOp: 'is', date: '2026-09-01', posts_transaction: false },
+    ]);
+    vi.mocked(scheduleApi.updateSchedule).mockResolvedValue('s1');
+
+    await handler('update-schedule')({ schedule: 's1', date: '2026-10-01', resetNextDate: false } as never);
+
+    expect(scheduleApi.updateSchedule).toHaveBeenCalledWith('s1', { date: '2026-10-01' }, false);
+  });
 });

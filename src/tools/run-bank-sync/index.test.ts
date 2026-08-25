@@ -31,10 +31,10 @@ describe('run-bank-sync tool', () => {
     expect(schema.inputSchema.type).toBe('object');
   });
 
-  it('queues all linked accounts by default', async () => {
-    const result = await handler({});
-    expect(startBankSyncJob).toHaveBeenCalledWith('all');
-    expect((result.content[0] as { text: string }).text).toContain(job.id);
+  it('rejects an omitted scope without queueing a broad sync', async () => {
+    const result = await handler({} as never);
+    expect(result.isError).toBe(true);
+    expect(startBankSyncJob).not.toHaveBeenCalled();
   });
 
   it.each(['onbudget', 'offbudget'] as const)('queues the %s scope', async (scope) => {
@@ -63,7 +63,7 @@ describe('run-bank-sync tool', () => {
     vi.mocked(startBankSyncJob).mockImplementation(() => {
       throw new Error('BANK_SYNC_ALREADY_RUNNING');
     });
-    const result = await handler({});
+    const result = await handler({ scope: 'all' });
     expect(result.isError).toBe(true);
     expect((result.content[0] as { text: string }).text).toContain('BANK_SYNC_ALREADY_RUNNING');
   });

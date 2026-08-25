@@ -5,13 +5,12 @@ import { GetTransactionsDataFetcher } from './data-fetcher.js';
 import { GetTransactionsMapper } from './transaction-mapper.js';
 import { GetTransactionsReportGenerator } from './report-generator.js';
 import { success, errorFromCatch } from '../../utils/response.js';
-import { getDateRange } from '../../utils.js';
 import { GetTransactionsArgsSchema, type GetTransactionsArgs, type ToolInput } from '../../types.js';
 import { toJSONSchema } from 'zod';
 
 export const schema = {
   name: 'get-transactions',
-  description: 'Get transactions for an account with optional filtering',
+  description: 'Get transactions for an account with optional filters and no implicit date range or result limit',
   inputSchema: toJSONSchema(GetTransactionsArgsSchema) as ToolInput,
 };
 
@@ -19,10 +18,9 @@ export async function handler(args: GetTransactionsArgs): Promise<CallToolResult
   try {
     const input = new GetTransactionsInputParser().parse(args);
     const { accountId, startDate, endDate, minAmount, maxAmount, categoryName, payeeName, limit } = input;
-    const { startDate: start, endDate: end } = getDateRange(startDate, endDate);
 
     // Fetch transactions
-    const transactions = await new GetTransactionsDataFetcher().fetch(accountId, start, end);
+    const transactions = await new GetTransactionsDataFetcher().fetch(accountId, startDate, endDate);
     let filtered = [...transactions];
 
     if (minAmount !== undefined) {
@@ -39,7 +37,7 @@ export async function handler(args: GetTransactionsArgs): Promise<CallToolResult
       const lowerPayee = payeeName.toLowerCase();
       filtered = filtered.filter((t) => (t.payee_name || '').toLowerCase().includes(lowerPayee));
     }
-    if (limit && filtered.length > limit) {
+    if (limit !== undefined && filtered.length > limit) {
       filtered = filtered.slice(0, limit);
     }
 
@@ -48,7 +46,8 @@ export async function handler(args: GetTransactionsArgs): Promise<CallToolResult
 
     // Build filter description
     const filterDescription = [
-      startDate || endDate ? `Date range: ${startDate} to ${endDate}` : null,
+      startDate ? `Date on or after: ${startDate}` : null,
+      endDate ? `Date on or before: ${endDate}` : null,
       minAmount !== undefined ? `Min amount: $${minAmount.toFixed(2)}` : null,
       maxAmount !== undefined ? `Max amount: $${maxAmount.toFixed(2)}` : null,
       categoryName ? `Category: ${categoryName}` : null,

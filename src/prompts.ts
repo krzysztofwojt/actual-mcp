@@ -1,7 +1,17 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { GetPromptRequestSchema, ListPromptsRequestSchema, GetPromptResult } from '@modelcontextprotocol/sdk/types.js';
-import { FinancialInsightsArgs, BudgetReviewArgs } from './types.js';
 import { getDateRange } from './utils.js';
+import { z } from 'zod';
+import { DateSchema } from './core/input/schemas.js';
+
+const FinancialInsightsPromptArgsSchema = z.object({
+  startDate: DateSchema.optional(),
+  endDate: DateSchema.optional(),
+});
+
+const BudgetReviewPromptArgsSchema = z.object({
+  months: z.coerce.number().finite().int().positive().optional().default(3),
+});
 
 export const promptsSchema = [
   {
@@ -10,12 +20,12 @@ export const promptsSchema = [
     arguments: [
       {
         name: 'startDate',
-        description: 'Start date in YYYY-MM-DD format',
+        description: 'Start date in YYYY-MM-DD. If omitted, defaults to three months before the effective end date.',
         required: false,
       },
       {
         name: 'endDate',
-        description: 'End date in YYYY-MM-DD format',
+        description: 'End date in YYYY-MM-DD. If omitted, defaults to today.',
         required: false,
       },
     ],
@@ -26,7 +36,7 @@ export const promptsSchema = [
     arguments: [
       {
         name: 'months',
-        description: 'Number of months to analyze',
+        description: 'Positive integer number of months to analyze. Defaults to 3.',
         required: false,
       },
     ],
@@ -37,8 +47,8 @@ export const promptsSchema = [
   },
 ];
 
-const financialInsightsPrompt = (args: FinancialInsightsArgs): GetPromptResult => {
-  const { startDate, endDate } = args || {};
+const financialInsightsPrompt = (args: unknown): GetPromptResult => {
+  const { startDate, endDate } = FinancialInsightsPromptArgsSchema.parse(args ?? {});
   const { startDate: start, endDate: end } = getDateRange(startDate, endDate);
 
   return {
@@ -76,8 +86,8 @@ Based on this analysis, please provide:
   };
 };
 
-const budgetReviewPrompt = (args: BudgetReviewArgs): GetPromptResult => {
-  const { months = 3 } = args || {};
+const budgetReviewPrompt = (args: unknown): GetPromptResult => {
+  const { months } = BudgetReviewPromptArgsSchema.parse(args ?? {});
 
   return {
     description: `Budget review for the past ${months} months`,
@@ -179,11 +189,11 @@ export const setupPrompts = (server: Server): void => {
 
       switch (name) {
         case 'financial-insights': {
-          return financialInsightsPrompt(promptArgs as FinancialInsightsArgs);
+          return financialInsightsPrompt(promptArgs);
         }
 
         case 'budget-review': {
-          return budgetReviewPrompt(promptArgs as unknown as BudgetReviewArgs);
+          return budgetReviewPrompt(promptArgs);
         }
 
         case 'actual-cleanup': {

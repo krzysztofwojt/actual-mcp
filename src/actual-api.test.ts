@@ -14,7 +14,13 @@ vi.mock('@actual-app/api', () => ({
 }));
 
 import * as api from '@actual-app/api';
-import { createTransaction, initActualApi, shutdownActualApi, updateTransaction } from './actual-api.js';
+import {
+  createTransaction,
+  getTransactions,
+  initActualApi,
+  shutdownActualApi,
+  updateTransaction,
+} from './actual-api.js';
 
 describe('initActualApi syncing', () => {
   beforeEach(async () => {
@@ -23,6 +29,7 @@ describe('initActualApi syncing', () => {
     process.env.ACTUAL_SERVER_URL = 'https://example.invalid';
     process.env.ACTUAL_PASSWORD = 'secret';
     delete process.env.ACTUAL_SYNC_TTL_MS;
+    delete process.env.ACTUAL_BUDGET_SYNC_ID;
     vi.useFakeTimers();
   });
 
@@ -36,6 +43,28 @@ describe('initActualApi syncing', () => {
 
     expect(api.downloadBudget).toHaveBeenCalledTimes(1);
     expect(api.sync).not.toHaveBeenCalled();
+  });
+
+  it('uses the only available budget when no budget id is configured', async () => {
+    await initActualApi();
+    expect(api.downloadBudget).toHaveBeenCalledWith('cloud-1', undefined);
+  });
+
+  it('requires an explicit budget id when multiple budgets are available', async () => {
+    vi.mocked(api.getBudgets).mockResolvedValue([
+      { id: 'budget-1', cloudFileId: 'cloud-1' },
+      { id: 'budget-2', cloudFileId: 'cloud-2' },
+    ] as never);
+
+    await expect(initActualApi()).rejects.toThrow('ACTUAL_BUDGET_SYNC_ID_REQUIRED');
+    expect(api.downloadBudget).not.toHaveBeenCalled();
+  });
+
+  it('rejects a configured budget id that is not available', async () => {
+    process.env.ACTUAL_BUDGET_SYNC_ID = 'missing-budget';
+
+    await expect(initActualApi()).rejects.toThrow('ACTUAL_BUDGET_NOT_FOUND');
+    expect(api.downloadBudget).not.toHaveBeenCalled();
   });
 
   it('does not re-download the budget on later calls', async () => {
@@ -75,6 +104,16 @@ describe('initActualApi syncing', () => {
     await initActualApi();
     vi.mocked(api.sync).mockRejectedValueOnce(new Error('server unreachable'));
     await expect(initActualApi()).rejects.toThrow('server unreachable');
+  });
+
+  it('forwards omitted transaction date bounds to Actual without inventing defaults', async () => {
+    vi.mocked(api.getTransactions).mockResolvedValue([]);
+
+    await getTransactions('account-1');
+    await getTransactions('account-1', undefined, '2026-05-24');
+
+    expect(api.getTransactions).toHaveBeenNthCalledWith(1, 'account-1', undefined, undefined);
+    expect(api.getTransactions).toHaveBeenNthCalledWith(2, 'account-1', undefined, '2026-05-24');
   });
 
   it('converts exact decimal amounts and verifies a newly created transaction', async () => {

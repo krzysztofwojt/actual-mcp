@@ -2,6 +2,7 @@
 export type { Account, Transaction, Category, CategoryGroup, Payee } from './core/types/domain.js';
 import { z } from 'zod';
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
+import { AccountReferenceSchema, DateSchema, PositiveIntegerSchema } from './core/input/schemas.js';
 
 const MoneyStringSchema = z
   .string()
@@ -18,41 +19,57 @@ export interface BudgetFile {
 
 // Type definitions for tool arguments
 export const GetTransactionsArgsSchema = z.object({
-  accountId: z.string(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
+  accountId: AccountReferenceSchema.describe('Actual Budget account ID.'),
+  startDate: DateSchema.optional().describe(
+    'Inclusive lower bound in YYYY-MM-DD. If omitted, no lower date bound is applied.'
+  ),
+  endDate: DateSchema.optional().describe(
+    'Inclusive upper bound in YYYY-MM-DD. If omitted, no upper date bound is applied.'
+  ),
   minAmount: z.number().optional(),
   maxAmount: z.number().optional(),
   categoryName: z.string().optional(),
   payeeName: z.string().optional(),
-  limit: z.number().optional(),
+  limit: PositiveIntegerSchema.optional().describe(
+    'Maximum number of matching transactions to return. If omitted, return all matching transactions.'
+  ),
 });
 
 export type GetTransactionsArgs = z.infer<typeof GetTransactionsArgsSchema>;
 
 export const SpendingByCategoryArgsSchema = z.object({
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  accountId: z.string().optional(),
-  includeIncome: z.boolean().optional(),
+  startDate: DateSchema.optional().describe(
+    'Inclusive lower bound in YYYY-MM-DD. If omitted, no lower date bound is applied.'
+  ),
+  endDate: DateSchema.optional().describe(
+    'Inclusive upper bound in YYYY-MM-DD. If omitted, no upper date bound is applied.'
+  ),
+  accountId: AccountReferenceSchema.optional().describe('Account ID. If omitted, use all open on-budget accounts.'),
+  includeIncome: z.boolean().optional().default(false).describe('Include income categories. Defaults to false.'),
 });
 
-export type SpendingByCategoryArgs = z.infer<typeof SpendingByCategoryArgsSchema>;
+export type SpendingByCategoryArgs = z.input<typeof SpendingByCategoryArgsSchema>;
 
 export const MonthlySummaryArgsSchema = z.object({
-  months: z.number().optional().default(3),
-  accountId: z.string().optional(),
+  months: PositiveIntegerSchema.optional().default(3).describe('Number of calendar months to analyze. Defaults to 3.'),
+  accountId: AccountReferenceSchema.optional().describe('Account ID. If omitted, use all open on-budget accounts.'),
 });
 
-export type MonthlySummaryArgs = z.infer<typeof MonthlySummaryArgsSchema>;
+export type MonthlySummaryArgs = z.input<typeof MonthlySummaryArgsSchema>;
 
 export const BalanceHistoryArgsSchema = z.object({
-  accountId: z.string(),
-  includeOffBudget: z.boolean().optional().default(false),
-  months: z.number().optional().default(3),
+  accountId: AccountReferenceSchema.optional().describe(
+    'Account ID. If omitted, aggregate open accounts selected by includeOffBudget.'
+  ),
+  includeOffBudget: z
+    .boolean()
+    .optional()
+    .default(false)
+    .describe('Include open off-budget accounts in an aggregate report. Defaults to false.'),
+  months: PositiveIntegerSchema.optional().default(3).describe('Number of calendar months to analyze. Defaults to 3.'),
 });
 
-export type BalanceHistoryArgs = z.infer<typeof BalanceHistoryArgsSchema>;
+export type BalanceHistoryArgs = z.input<typeof BalanceHistoryArgsSchema>;
 
 export const FinancialInsightsArgsSchema = z.object({
   startDate: z.string().optional(),

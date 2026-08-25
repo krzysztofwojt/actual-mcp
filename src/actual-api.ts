@@ -97,8 +97,20 @@ export async function initActualApi(): Promise<void> {
       throw new Error('No budgets found. Please create a budget in Actual first.');
     }
 
-    // Use specified budget or the first one
-    const budgetId: string = process.env.ACTUAL_BUDGET_SYNC_ID || budgets[0].cloudFileId || budgets[0].id || '';
+    const configuredBudgetId = process.env.ACTUAL_BUDGET_SYNC_ID?.trim();
+    let selectedBudget: BudgetFile;
+    if (configuredBudgetId) {
+      const configuredBudget = budgets.find(
+        (budget) => budget.cloudFileId === configuredBudgetId || budget.id === configuredBudgetId
+      );
+      if (!configuredBudget) throw new Error(`ACTUAL_BUDGET_NOT_FOUND: ${configuredBudgetId}`);
+      selectedBudget = configuredBudget;
+    } else {
+      if (budgets.length !== 1) throw new Error('ACTUAL_BUDGET_SYNC_ID_REQUIRED: multiple budgets are available');
+      selectedBudget = budgets[0];
+    }
+    const budgetId = selectedBudget.cloudFileId || selectedBudget.id;
+    if (!budgetId) throw new Error('ACTUAL_BUDGET_ID_MISSING');
     console.error(`Loading budget: ${budgetId}`);
     await api.downloadBudget(
       budgetId,
@@ -173,11 +185,20 @@ export async function getPayees(): Promise<APIPayeeEntity[]> {
 }
 
 /**
- * Get transactions for a specific account and date range (ensures API is initialized)
+ * Get transactions for a specific account with optional inclusive date bounds.
+ *
+ * Actual's public API declaration types both bounds as required, but its native
+ * `api/transactions-get` handler treats each bound as optional and omits the
+ * corresponding AQL predicate when the value is undefined.
  */
-export async function getTransactions(accountId: string, start: string, end: string): Promise<TransactionEntity[]> {
+export async function getTransactions(accountId: string, start?: string, end?: string): Promise<TransactionEntity[]> {
   await initActualApi();
-  return api.getTransactions(accountId, start, end);
+  const getTransactionsWithOptionalBounds = api.getTransactions as (
+    accountId: string,
+    startDate?: string,
+    endDate?: string
+  ) => Promise<TransactionEntity[]>;
+  return getTransactionsWithOptionalBounds(accountId, start, end);
 }
 
 /**

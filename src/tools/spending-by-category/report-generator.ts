@@ -5,12 +5,19 @@ import { formatAmount } from '../../utils.js';
 export class SpendingByCategoryReportGenerator {
   generate(
     sortedGroups: GroupSpending[],
-    period: { start: string; end: string },
+    period: { start?: string; end?: string },
     accountLabel: string,
     includeIncome: boolean
   ): string {
     let markdown = `# Spending by Category\n\n`;
-    markdown += `Period: ${period.start} to ${period.end}\n\n`;
+    const periodLabel = period.start
+      ? period.end
+        ? `${period.start} to ${period.end}`
+        : `on or after ${period.start}`
+      : period.end
+        ? `on or before ${period.end}`
+        : 'all available history';
+    markdown += `Period: ${periodLabel}\n\n`;
     markdown += `${accountLabel}\n\n`;
     markdown += `Income categories: ${includeIncome ? 'Included' : 'Excluded'}\n\n`;
     sortedGroups.forEach((group) => {

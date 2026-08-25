@@ -9,7 +9,7 @@ on:
       image_tag:
         description: Image tag to publish
         required: true
-        default: v1.12.1-kwojt.1
+        default: v1.12.1-kwojt.4
 
 permissions:
   contents: read

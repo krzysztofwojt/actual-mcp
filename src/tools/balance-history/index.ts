@@ -18,7 +18,7 @@ export const schema = {
 export async function handler(args: BalanceHistoryArgs): Promise<CallToolResult> {
   try {
     const input = new BalanceHistoryInputParser().parse(args);
-    const { accountId, months } = input;
+    const { accountId, includeOffBudget, months } = input;
 
     // Calculate date range
     const endDate = new Date();
@@ -28,7 +28,12 @@ export async function handler(args: BalanceHistoryArgs): Promise<CallToolResult>
     const end = formatDate(endDate);
 
     // Fetch data
-    const { account, accounts, transactions } = await new BalanceHistoryDataFetcher().fetchAll(accountId, start, end);
+    const { account, accounts, transactions } = await new BalanceHistoryDataFetcher().fetchAll(
+      accountId,
+      includeOffBudget,
+      start,
+      end
+    );
 
     // Calculate balance history
     const sortedMonths = new BalanceHistoryCalculator().calculate(account, accounts, transactions, months, endDate);

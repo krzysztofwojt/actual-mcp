@@ -68,8 +68,8 @@ async function _enrichTransactions(transactions: TransactionEntity[]): Promise<T
 
 export async function fetchTransactionsForAccount(
   accountId: string,
-  start: string,
-  end: string
+  start?: string,
+  end?: string
 ): Promise<Transaction[]> {
   const transactions = await getTransactions(accountId, start, end);
   return _enrichTransactions(transactions);
@@ -77,8 +77,8 @@ export async function fetchTransactionsForAccount(
 
 export async function fetchAllOnBudgetTransactions(
   accounts: Account[],
-  start: string,
-  end: string
+  start?: string,
+  end?: string
 ): Promise<Transaction[]> {
   let transactions: Transaction[] = [];
   const onBudgetAccounts = accounts.filter((a) => !a.offbudget && !a.closed);
@@ -89,7 +89,7 @@ export async function fetchAllOnBudgetTransactions(
   return _enrichTransactions(transactions);
 }
 
-export async function fetchAllTransactions(accounts: Account[], start: string, end: string): Promise<Transaction[]> {
+export async function fetchAllTransactions(accounts: Account[], start?: string, end?: string): Promise<Transaction[]> {
   let transactions: Transaction[] = [];
   for (const account of accounts) {
     const tx = await getTransactions(account.id, start, end);

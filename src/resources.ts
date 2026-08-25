@@ -11,6 +11,7 @@ import { Account, Transaction } from './types.js';
 import { formatAmount, formatDate, getDateRange } from './utils.js';
 import { initActualApi, shutdownActualApi } from './actual-api.js';
 import { fetchAllAccounts } from './core/data/fetch-accounts.js';
+import { fetchCurrentAccountBalance } from './core/data/account-balance.js';
 
 export const setupResources = (server: Server): void => {
   /**
@@ -21,12 +22,20 @@ export const setupResources = (server: Server): void => {
       await initActualApi();
       const accounts: Account[] = await fetchAllAccounts();
       return {
-        resources: accounts.map((account) => ({
-          uri: `actual://accounts/${account.id}`,
-          name: account.name,
-          description: `${account.name} (${account.type || 'Account'})${account.closed ? ' - CLOSED' : ''}`,
-          mimeType: 'text/markdown',
-        })),
+        resources: accounts.flatMap((account) => [
+          {
+            uri: `actual://accounts/${account.id}`,
+            name: account.name,
+            description: `${account.name} (${account.type || 'Account'})${account.closed ? ' - CLOSED' : ''}`,
+            mimeType: 'text/markdown',
+          },
+          {
+            uri: `actual://accounts/${account.id}/transactions`,
+            name: `${account.name} - recent transactions`,
+            description: 'Transactions from the recent three-month period ending today.',
+            mimeType: 'text/markdown',
+          },
+        ]),
       };
     } catch (error) {
       console.error('Error listing resources:', error);
@@ -91,7 +100,7 @@ export const setupResources = (server: Server): void => {
           };
         }
 
-        const balance: number = await api.getAccountBalance(accountId, new Date('2099-01-01'));
+        const balance: number = await fetchCurrentAccountBalance(accountId);
         const formattedBalance: string = formatAmount(balance);
 
         const details = `# Account: ${account.name}
@@ -115,7 +124,7 @@ To view transactions for this account, use the get-transactions tool.`;
         };
       }
 
-      // If the path is "accounts/{id}/transactions", return transactions
+      // If the path is "accounts/{id}/transactions", return the explicitly advertised recent period.
       if (pathParts.length === 2 && pathParts[1] === 'transactions' && url.hostname === 'accounts') {
         const accountId: string = pathParts[0];
         const { startDate, endDate } = getDateRange();
@@ -147,7 +156,7 @@ To view transactions for this account, use the get-transactions tool.`;
           })
           .join('\n');
 
-        const text = `# Transactions for Account\n\nTime period: ${startDate} to ${endDate}\nTotal Transactions: ${transactions.length}\n\n${header}${rows}`;
+        const text = `# Recent Transactions for Account\n\nTime period: ${startDate} to ${endDate}\nTotal Transactions: ${transactions.length}\n\n${header}${rows}`;
 
         return {
           contents: [
