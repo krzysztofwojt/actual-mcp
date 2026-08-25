@@ -337,8 +337,52 @@ export async function updateTransaction(id: string, data: UpdateTransactionData)
       : { subtransactions: data.subtransactions.map((item) => ({ ...item, amount: parseMoney(item.amount) })) }),
   };
   const result = await api.updateTransaction(id, converted as unknown as Partial<TransactionEntity>);
-  if (!result.some((item) => item.id === id)) throw new Error(`TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}`);
-  return result;
+  if (Array.isArray(result) && result.length === 0) {
+    throw new Error(`TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}`);
+  }
+
+  // Actual 26.8.1 can return undefined here even though the asynchronous write
+  // continues. Query the stored transaction instead of treating the mutation
+  // response as a readback record.
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const readback = (await api.aqlQuery(
+      api.q('transactions').filter({ id }).select('*').options({ splits: 'grouped' })
+    )) as { data?: TransactionEntity[] };
+    const transactions = Array.isArray(readback?.data) ? readback.data : [];
+    const stored = transactions.find((item) => item.id === id) as Record<string, unknown> | undefined;
+
+    if (stored && transactionContainsUpdate(stored, converted as Record<string, unknown>)) {
+      return transactions;
+    }
+    if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+
+  throw new Error(`TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}`);
+}
+
+function transactionContainsUpdate(stored: Record<string, unknown>, update: Record<string, unknown>): boolean {
+  return Object.entries(update).every(([field, expected]) => {
+    if (expected === undefined) return true;
+    if (field !== 'subtransactions') return stored[field] === expected;
+    if (!Array.isArray(expected) || !Array.isArray(stored[field]) || stored[field].length !== expected.length)
+      return false;
+
+    return expected.every((expectedSubtransaction, index) => {
+      const expectedFields = expectedSubtransaction as Record<string, unknown>;
+      const storedSubtransactions = stored[field] as Array<Record<string, unknown>>;
+      const storedSubtransaction =
+        typeof expectedFields.id === 'string'
+          ? storedSubtransactions.find((item) => item.id === expectedFields.id)
+          : storedSubtransactions[index];
+      return Boolean(
+        storedSubtransaction &&
+        Object.entries(expectedFields).every(
+          ([subtransactionField, subtransactionValue]) =>
+            subtransactionValue === undefined || storedSubtransaction[subtransactionField] === subtransactionValue
+        )
+      );
+    });
+  });
 }
 
 /**

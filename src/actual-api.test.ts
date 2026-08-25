@@ -7,6 +7,8 @@ vi.mock('@actual-app/api', () => ({
   sync: vi.fn(),
   shutdown: vi.fn(),
   getTransactions: vi.fn(),
+  q: vi.fn(),
+  aqlQuery: vi.fn(),
   addTransactions: vi.fn(),
   updateTransaction: vi.fn(),
 }));
@@ -94,5 +96,22 @@ describe('initActualApi syncing', () => {
     await expect(updateTransaction('txn-1', { amount: '12.34' })).rejects.toThrow(
       'TRANSACTION_UPDATE_READBACK_MISMATCH'
     );
+  });
+
+  it('reads the transaction back when Actual returns undefined after a partial update', async () => {
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.updateTransaction).mockResolvedValue(undefined as never);
+    vi.mocked(api.aqlQuery).mockResolvedValue({
+      data: [{ id: 'txn-1', category: 'category-2' }],
+    });
+
+    await expect(updateTransaction('txn-1', { category: 'category-2' })).resolves.toMatchObject([
+      { id: 'txn-1', category: 'category-2' },
+    ]);
   });
 });
