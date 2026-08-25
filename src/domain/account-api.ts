@@ -1,6 +1,7 @@
 import * as api from '@actual-app/api';
 import { APIAccountEntity } from '@actual-app/api/models';
 import { initActualApi } from '../actual-api.js';
+import { fetchCurrentAccountBalance } from '../core/data/account-balance.js';
 
 export async function createAccount(
   fields: Omit<APIAccountEntity, 'id' | 'balance_current'>,
@@ -32,5 +33,5 @@ export async function deleteAccount(id: string): Promise<void> {
 
 export async function getAccountBalance(id: string): Promise<number> {
   await initActualApi();
-  return api.getAccountBalance(id, new Date('2099-12-31T00:00:00.000Z'));
+  return fetchCurrentAccountBalance(id);
 }

@@ -4,7 +4,7 @@ import { fetchAllTransactions, fetchTransactionsForAccount } from '../../core/da
 import type { Transaction } from '../../core/types/domain.js';
 
 export class GetTransactionsDataFetcher {
-  async fetch(accountId: string | undefined, start: string, end: string): Promise<Transaction[]> {
+  async fetch(accountId: string | undefined, start?: string, end?: string): Promise<Transaction[]> {
     if (accountId) {
       return await fetchTransactionsForAccount(accountId, start, end);
     }

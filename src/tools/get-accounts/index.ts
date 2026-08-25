@@ -7,6 +7,7 @@ import { fetchAllAccounts } from '../../core/data/fetch-accounts.js';
 import { fetchAccountBalanceAsOf } from '../../core/data/fetch-account-balance.js';
 import type { Account } from '../../core/types/domain.js';
 import { formatAmount } from '../../utils.js';
+import { fetchCurrentAccountBalance } from '../../core/data/account-balance.js';
 import { z, toJSONSchema } from 'zod';
 import { type ToolInput } from '../../types.js';
 

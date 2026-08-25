@@ -19,12 +19,16 @@ export class MonthlySummaryDataFetcher {
     transactions: Transaction[];
   }> {
     const accounts = await fetchAllAccounts();
+    const account = accountId ? accounts.find((candidate) => candidate.id === accountId) : undefined;
+    if (accountId && !account) {
+      throw new Error(`ACCOUNT_NOT_FOUND: ${accountId}`);
+    }
     const categories = await fetchAllCategories();
     const categoryGroups = await fetchAllCategoryGroups();
 
     let transactions: Transaction[] = [];
-    if (accountId) {
-      transactions = await fetchTransactionsForAccount(accountId, start, end);
+    if (account) {
+      transactions = await fetchTransactionsForAccount(account.id, start, end);
     } else {
       transactions = await fetchAllOnBudgetTransactions(accounts, start, end);
     }

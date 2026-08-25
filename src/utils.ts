@@ -3,8 +3,10 @@
  */
 export function getDateRange(startDate?: string, endDate?: string): { startDate: string; endDate: string } {
   const today = new Date();
+  const defaultEndDate = endDate ? new Date(`${endDate}T12:00:00`) : today;
   const defaultStartDate = new Date();
-  defaultStartDate.setMonth(today.getMonth() - 3); // 3 months ago by default
+  defaultStartDate.setTime(defaultEndDate.getTime());
+  defaultStartDate.setMonth(defaultEndDate.getMonth() - 3); // 3 months before the effective end date
 
   return {
     startDate: startDate || formatDate(defaultStartDate),

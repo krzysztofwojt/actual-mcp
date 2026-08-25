@@ -4,21 +4,24 @@
 
 import { successWithJson, errorFromCatch } from '../../../utils/response.js';
 import { createRule, getRules } from '../../../actual-api.js';
-import { RuleInputSchema } from '../input-schema.js';
+import { CreateRuleArgsSchema } from '../input-schema.js';
 import { normalizeRuleStage } from '../normalize-stage.js';
 import { RuleEntity } from '@actual-app/core/types/models';
+import { toJSONSchema } from 'zod';
+import type { ToolInput } from '../../../types.js';
 
 export const schema = {
   name: 'create-rule',
   description: 'Create a new rule',
-  inputSchema: RuleInputSchema,
+  inputSchema: toJSONSchema(CreateRuleArgsSchema) as ToolInput,
 };
 
 export async function handler(
   args: Record<string, unknown>
 ): Promise<ReturnType<typeof successWithJson> | ReturnType<typeof errorFromCatch>> {
   try {
-    const { id }: RuleEntity = await createRule(normalizeRuleStage(args));
+    const input = CreateRuleArgsSchema.parse(args);
+    const { id }: RuleEntity = await createRule(normalizeRuleStage(input));
     const created = (await getRules()).find((item) => item.id === id);
     if (!created) throw new Error(`RULE_READBACK_MISSING: ${id}`);
 

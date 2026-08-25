@@ -67,8 +67,8 @@ export function getPayees(): Promise<APIPayeeEntity[]> {
 /**
  * Returns transactions for an account within an inclusive date range.
  */
-export function getTransactions(accountId: string, start: string, end: string): Promise<TransactionEntity[]> {
-  return getActualConnection().run(() => api.getTransactions(accountId, start, end));
+export function getTransactions(accountId: string, start?: string, end?: string): Promise<TransactionEntity[]> {
+  return getActualConnection().run(() => api.getTransactions(accountId, start as string, end as string));
 }
 
 /**
