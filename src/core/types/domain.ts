@@ -20,6 +20,7 @@ export interface Transaction {
   category_name?: string;
   notes?: string;
   transfer_id?: string;
+  schedule?: string;
   cleared?: boolean;
   // Reason: Actual returns split transactions as a parent with a nested `subtransactions`
   // array (one level deep) when queried with `splits: 'grouped'`, which is what the

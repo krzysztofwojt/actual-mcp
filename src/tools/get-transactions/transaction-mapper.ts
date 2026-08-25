@@ -11,6 +11,7 @@ export interface MappedTransaction {
   notes: string;
   cleared: boolean;
   transferId: string;
+  scheduleId?: string;
   // Reason: A split's subtransactions are one level deep in Actual's model, so this is not
   // recursive — a subtransaction row never has its own subtransactions.
   subtransactions?: Omit<MappedTransaction, 'subtransactions'>[];
@@ -31,6 +32,7 @@ export class GetTransactionsMapper {
       notes: t.notes || '',
       cleared: t.cleared ?? false,
       transferId: t.transfer_id || '',
+      scheduleId: t.schedule || '',
       ...(t.subtransactions ? { subtransactions: t.subtransactions.map((sub) => this._mapOne(sub)) } : {}),
     };
   }

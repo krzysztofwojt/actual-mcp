@@ -18,7 +18,7 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 
 #### Transaction & Account Management
 
-- **`get-transactions`** - Retrieve and filter transactions by account, date, amount, category, or payee
+- **`get-transactions`** - Retrieve and filter transactions by account, date, amount, category, or payee, including native transfer and schedule link IDs
 - **`create-transaction`** - Create a new transaction in an account with optional category, payee, and notes
 - **`update-transaction`** - Update an existing transaction with new category, payee, notes, or amount
 - **`get-accounts`** - Retrieve a list of all accounts with their current balance and ID
@@ -36,8 +36,12 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 #### Schedules, tags, and notes
 
 - **`get-schedules`**, **`create-schedule`**, **`update-schedule`**, **`delete-schedule`**
+- **`match-transaction-to-schedule`** - Link one exact transaction UUID to a schedule UUID or unique case-insensitive name
+- **`unmatch-transaction-from-schedule`** - Remove only the schedule link from one exact transaction UUID
 - **`get-tags`**, **`create-tag`**, **`update-tag`**, **`delete-tag`**, **`assign-transaction-tag`**
 - **`get-note`**, **`update-note`** - Read, set, or clear generic entity notes
+
+Actual stores a posted schedule occurrence directly on the transaction in the native `transactions.schedule` field. These tools use the public `@actual-app/api.updateTransaction` mutation with either the schedule UUID or `null`, matching Actual 26.8.1's own Link schedule / Unlink schedule behavior. They reject automatic reassignment from another schedule and verify both the link and the transaction's protected financial fields by readback.
 
 #### Reporting & Analytics
 
@@ -384,7 +388,7 @@ This public fork tracks upstream while using independent versions such as `1.12.
 - Mutations use a durable idempotency ledger and structured audit logs retained for three months.
 - Exact ID or unique case-insensitive name resolution is supported; fuzzy write matching is intentionally rejected.
 - Bank synchronization is asynchronous and rejects concurrent runs.
-- The fork adds complete budget primitives, account lifecycle/reconciliation, schedules, tags, generic notes, and payee merging.
+- The fork adds complete budget primitives, account lifecycle/reconciliation, schedules (including explicit transaction match/unmatch), tags, generic notes, and payee merging.
 
 ## License
 

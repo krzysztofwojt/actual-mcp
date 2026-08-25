@@ -63,6 +63,7 @@ import { budgetReadTools, budgetWriteTools } from './budget/index.js';
 import { accountWriteTools } from './accounts/index.js';
 import { metadataReadTools, metadataWriteTools } from './metadata/index.js';
 import { scheduleReadTools, scheduleWriteTools } from './schedules/index.js';
+import { transactionScheduleWriteTools } from './transaction-schedules/index.js';
 
 const readTools = [
   getTransactions,
@@ -125,6 +126,7 @@ const writeTools = [
   ...accountWriteTools,
   ...metadataWriteTools,
   ...scheduleWriteTools,
+  ...transactionScheduleWriteTools,
 ];
 
 const writeToolNames = new Set(writeTools.map((tool) => tool.schema.name));

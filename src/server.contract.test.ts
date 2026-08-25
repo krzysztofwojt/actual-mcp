@@ -39,7 +39,7 @@ describe('MCP tool contract', () => {
     const writeClient = await connect(true);
     const readNames = new Set((await readClient.listTools()).tools.map((tool) => tool.name));
     const tools = (await writeClient.listTools()).tools;
-    expect(tools).toHaveLength(51);
+    expect(tools).toHaveLength(53);
     expect(new Set(tools.map((tool) => tool.name)).size).toBe(tools.length);
     for (const tool of tools.filter((item) => !readNames.has(item.name))) {
       expect(tool.inputSchema.required, tool.name).toContain('operationId');

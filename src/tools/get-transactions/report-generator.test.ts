@@ -13,6 +13,7 @@ describe('GetTransactionsReportGenerator', () => {
     notes: '',
     cleared: true,
     transferId: 'tx-2',
+    scheduleId: 'schedule-1',
   };
 
   const regularRow = {
@@ -24,25 +25,26 @@ describe('GetTransactionsReportGenerator', () => {
     notes: 'morning',
     cleared: false,
     transferId: '',
+    scheduleId: '',
   };
 
   it('renders the Transfer column in the header', () => {
     const md = generator.generate([transferRow], 'Date range: 2024-05-01 to 2024-05-31', 1, 1);
 
-    expect(md).toContain('| ID | Date | Payee | Category | Amount | Cleared | Notes | Transfer |');
-    expect(md).toContain('| ---- | ----- | -------- | ------ | ----- | ------- | ----- | -------- |');
+    expect(md).toContain('| ID | Date | Payee | Category | Amount | Cleared | Notes | Transfer | Schedule |');
+    expect(md).toContain('| ---- | ----- | -------- | ------ | ----- | ------- | ----- | -------- | -------- |');
   });
 
   it('renders transferId in the Transfer cell for transfer rows', () => {
     const md = generator.generate([transferRow], '', 1, 1);
 
-    expect(md).toContain('| tx-1 | 2024-05-01 | Savings | (Uncategorized) | $50.00 | true |  | tx-2 |');
+    expect(md).toContain('| tx-1 | 2024-05-01 | Savings | (Uncategorized) | $50.00 | true |  | tx-2 | schedule-1 |');
   });
 
   it('leaves the Transfer cell empty for non-transfer rows', () => {
     const md = generator.generate([regularRow], '', 1, 1);
 
-    expect(md).toContain('| tx-3 | 2024-05-02 | Coffee Shop | Dining | -$12.34 | false | morning |  |');
+    expect(md).toContain('| tx-3 | 2024-05-02 | Coffee Shop | Dining | -$12.34 | false | morning |  |  |');
   });
 
   it('preserves the leading columns so name-anchored parsers do not break', () => {
@@ -56,6 +58,7 @@ describe('GetTransactionsReportGenerator', () => {
       .filter(Boolean);
     expect(headers.slice(0, 7)).toEqual(['ID', 'Date', 'Payee', 'Category', 'Amount', 'Cleared', 'Notes']);
     expect(headers[7]).toBe('Transfer');
+    expect(headers[8]).toBe('Schedule');
   });
 
   it('renders a split subtransaction as its own row, nested under the parent, with its id visible', () => {
