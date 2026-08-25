@@ -60,11 +60,12 @@ describe('initActualApi syncing', () => {
     expect(api.downloadBudget).not.toHaveBeenCalled();
   });
 
-  it('rejects a configured budget id that is not available', async () => {
-    process.env.ACTUAL_BUDGET_SYNC_ID = 'missing-budget';
+  it('passes a configured sync id directly because getBudgets may expose only local ids', async () => {
+    process.env.ACTUAL_BUDGET_SYNC_ID = 'configured-sync-id';
 
-    await expect(initActualApi()).rejects.toThrow('ACTUAL_BUDGET_NOT_FOUND');
-    expect(api.downloadBudget).not.toHaveBeenCalled();
+    await initActualApi();
+
+    expect(api.downloadBudget).toHaveBeenCalledWith('configured-sync-id', undefined);
   });
 
   it('does not re-download the budget on later calls', async () => {

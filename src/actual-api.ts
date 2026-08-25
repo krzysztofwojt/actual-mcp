@@ -98,18 +98,14 @@ export async function initActualApi(): Promise<void> {
     }
 
     const configuredBudgetId = process.env.ACTUAL_BUDGET_SYNC_ID?.trim();
-    let selectedBudget: BudgetFile;
+    let budgetId: string | undefined;
     if (configuredBudgetId) {
-      const configuredBudget = budgets.find(
-        (budget) => budget.cloudFileId === configuredBudgetId || budget.id === configuredBudgetId
-      );
-      if (!configuredBudget) throw new Error(`ACTUAL_BUDGET_NOT_FOUND: ${configuredBudgetId}`);
-      selectedBudget = configuredBudget;
+      // Reason: Actual accepts the sync ID directly, while getBudgets() may expose only a local file ID.
+      budgetId = configuredBudgetId;
     } else {
       if (budgets.length !== 1) throw new Error('ACTUAL_BUDGET_SYNC_ID_REQUIRED: multiple budgets are available');
-      selectedBudget = budgets[0];
+      budgetId = budgets[0].cloudFileId || budgets[0].id;
     }
-    const budgetId = selectedBudget.cloudFileId || selectedBudget.id;
     if (!budgetId) throw new Error('ACTUAL_BUDGET_ID_MISSING');
     console.error(`Loading budget: ${budgetId}`);
     await api.downloadBudget(

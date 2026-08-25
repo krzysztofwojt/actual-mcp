@@ -1,6 +1,6 @@
 {
   "name": "@krzysztofwojt/actual-mcp",
-  "version": "1.12.1-kwojt.4",
+  "version": "1.12.1-kwojt.5",
   "description": "Actual Budget MCP server exposing API functionality",
   "private": false,
   "main": "build/index.js",
