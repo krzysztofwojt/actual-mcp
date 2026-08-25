@@ -12,6 +12,7 @@ export class GetTransactionsMapper {
     notes: string;
     cleared: boolean;
     transferId: string;
+    scheduleId: string;
   }> {
     return transactions.map((t) => ({
       id: t.id,
@@ -22,6 +23,7 @@ export class GetTransactionsMapper {
       notes: t.notes || '',
       cleared: t.cleared ?? false,
       transferId: t.transfer_id || '',
+      scheduleId: t.schedule || '',
     }));
   }
 }

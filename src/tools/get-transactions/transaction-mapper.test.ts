@@ -21,6 +21,20 @@ describe('GetTransactionsMapper', () => {
     expect(mapped.transferId).toBe('tx-2');
   });
 
+  it('exposes the native schedule link as scheduleId', () => {
+    const tx: Transaction = {
+      id: 'tx-scheduled',
+      account: 'acc-1',
+      date: '2024-05-01',
+      amount: -5000,
+      schedule: 'schedule-1',
+    };
+
+    const [mapped] = mapper.map([tx]);
+
+    expect(mapped.scheduleId).toBe('schedule-1');
+  });
+
   it('emits empty transferId for non-transfer transactions', () => {
     const tx: Transaction = {
       id: 'tx-3',
@@ -52,5 +66,6 @@ describe('GetTransactionsMapper', () => {
     expect(mapped.notes).toBe('');
     expect(mapped.cleared).toBe(false);
     expect(mapped.transferId).toBe('');
+    expect(mapped.scheduleId).toBe('');
   });
 });

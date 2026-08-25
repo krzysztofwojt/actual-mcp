@@ -20,6 +20,7 @@ export interface Transaction {
   category_name?: string;
   notes?: string;
   transfer_id?: string;
+  schedule?: string;
   cleared?: boolean;
 }
 

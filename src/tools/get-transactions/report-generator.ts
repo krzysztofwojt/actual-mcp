@@ -11,17 +11,18 @@ export class GetTransactionsReportGenerator {
       notes: string;
       cleared: boolean;
       transferId: string;
+      scheduleId: string;
     }>,
     filterDescription: string,
     filteredCount: number,
     totalCount: number
   ): string {
     const header =
-      '| ID | Date | Payee | Category | Amount | Cleared | Notes | Transfer |\n| ---- | ----- | -------- | ------ | ----- | ------- | ----- | -------- |\n';
+      '| ID | Date | Payee | Category | Amount | Cleared | Notes | Transfer | Schedule |\n| ---- | ----- | -------- | ------ | ----- | ------- | ----- | -------- | -------- |\n';
     const rows = mappedTransactions
       .map(
         (t) =>
-          `| ${t.id} | ${t.date} | ${t.payee} | ${t.category} | ${t.amount} | ${t.cleared} | ${t.notes} | ${t.transferId} |`
+          `| ${t.id} | ${t.date} | ${t.payee} | ${t.category} | ${t.amount} | ${t.cleared} | ${t.notes} | ${t.transferId} | ${t.scheduleId} |`
       )
       .join('\n');
     return `# Filtered Transactions\n\n${filterDescription}\nMatching Transactions: ${filteredCount}/${totalCount}\n\n${header}${rows}`;
