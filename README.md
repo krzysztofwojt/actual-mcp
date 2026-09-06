@@ -95,6 +95,36 @@ When `update-schedule.resetNextDate` is omitted, the next occurrence is recalcul
 - **`update-rule`** - Update an existing transaction rule
 - **`delete-rule`** - Delete a transaction rule
 
+Split amount actions use Actual's native `options.method`: `fixed-amount`,
+`fixed-percent`, `remainder`, or `formula`. Create and update accept the same shape;
+get-rules returns native actions without rewriting formulas. For example:
+
+```json
+{
+  "op": "set-split-amount",
+  "field": null,
+  "value": null,
+  "options": {
+    "splitIndex": 1,
+    "method": "formula",
+    "formula": "=INTEGER_TO_AMOUNT(parent_amount) * 0.5"
+  }
+}
+```
+
+Split indexes start at 1. A formula must start with `=` and contain an expression.
+Formula/remainder actions use `value: null` (legacy `0` is accepted); fixed amounts
+use integer cents and fixed percentages use a number from 0 to 100. Formulas
+return major currency units, which Actual converts to cents. Do not attach a
+formula to a fixed or remainder action. Conditions can inspect `notes`.
+
+Parent text variables (`parent_notes`, `parent_imported_payee`, `parent_payee`,
+`parent_account`) require the corresponding Actual rules-engine enhancement in
+**every client that executes rules**, including the API used by bank importers.
+MCP only passes the native formula through; it does not implement an evaluator,
+transaction watcher, or a processing database.
+
+
 #### Bank synchronization
 
 - **`run-bank-sync`** - Queue a real bank sync for all, on-budget, off-budget, or one existing account. `scope` is required; an empty request never defaults to all accounts.
