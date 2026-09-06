@@ -24,6 +24,10 @@ vi.mock('@actual-app/api', () => ({
 describe('import-transactions tool', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(actualApi.getPayees).mockResolvedValue([
+      { id: 'payee-a', name: 'Shop A' },
+      { id: 'payee-b', name: 'Shop B' },
+    ]);
   });
 
   describe('schema', () => {
@@ -44,6 +48,10 @@ describe('import-transactions tool', () => {
       expect(properties).toHaveProperty('defaultCleared');
       expect(properties).toHaveProperty('dryRun');
       expect(properties).toHaveProperty('reimportDeleted');
+      const transactionsSchema = properties?.transactions as {
+        items?: { properties?: { subtransactions?: { items?: { properties?: Record<string, unknown> } } } };
+      };
+      expect(transactionsSchema.items?.properties?.subtransactions?.items?.properties).toHaveProperty('payee');
     });
   });
 
@@ -101,6 +109,42 @@ describe('import-transactions tool', () => {
       });
       expect(result.isError).toBeUndefined();
       expect(textContent(result.content[0])).toContain('[DRY RUN]');
+    });
+
+    it('should import same-category splits with two resolved payees', async () => {
+      vi.mocked(actualApi.importTransactions).mockResolvedValue({ added: ['tx-split'], updated: [], errors: [] });
+
+      const result = await handler({
+        accountId: 'account-123',
+        transactions: [
+          {
+            date: '2026-09-06',
+            amount: '-10.00',
+            subtransactions: [
+              { amount: '-4.00', category: 'shared-category', payee: 'Shop A' },
+              { amount: '-6.00', category: 'shared-category', payee: 'payee-b' },
+            ],
+          },
+        ],
+      });
+
+      expect(actualApi.importTransactions).toHaveBeenCalledWith(
+        'account-123',
+        [
+          {
+            account: 'account-123',
+            amount: -1000,
+            category: undefined,
+            date: '2026-09-06',
+            subtransactions: [
+              { amount: -400, category: 'shared-category', payee: 'payee-a' },
+              { amount: -600, category: 'shared-category', payee: 'payee-b' },
+            ],
+          },
+        ],
+        { defaultCleared: undefined, dryRun: undefined, reimportDeleted: undefined }
+      );
+      expect(result.isError).toBeUndefined();
     });
 
     it('should pass defaultCleared option to the API', async () => {

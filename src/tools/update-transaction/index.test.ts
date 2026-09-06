@@ -6,9 +6,10 @@ vi.mock('../../actual-api.js', () => ({
   updateTransaction: vi.fn(),
   getAccounts: vi.fn(),
   getPayees: vi.fn(),
+  getTransactionById: vi.fn(),
 }));
 
-import { getPayees, getAccounts, updateTransaction } from '../../actual-api.js';
+import { getAccounts, getPayees, getTransactionById, updateTransaction } from '../../actual-api.js';
 
 describe('update-transaction tool', () => {
   beforeEach(() => {
@@ -17,6 +18,12 @@ describe('update-transaction tool', () => {
       { id: 'acc-456', name: 'Existing account' },
       { id: 'new-account-456', name: 'New account' },
     ]);
+    vi.mocked(getPayees).mockResolvedValue([
+      { id: 'payee-789', name: 'Main shop' },
+      { id: 'payee-a', name: 'Shop A' },
+      { id: 'payee-b', name: 'Shop B' },
+    ]);
+    vi.mocked(getTransactionById).mockResolvedValue({ id: 'txn-123', amount: -5000 } as never);
   });
 
   describe('schema', () => {
@@ -28,6 +35,10 @@ describe('update-transaction tool', () => {
     it('should have inputSchema defined', () => {
       expect(schema.inputSchema).toBeDefined();
       expect(schema.inputSchema.type).toBe('object');
+      const splitSchema = schema.inputSchema.properties?.subtransactions as {
+        items?: { properties?: Record<string, unknown> };
+      };
+      expect(splitSchema.items?.properties).toHaveProperty('payee');
     });
   });
 
@@ -177,44 +188,33 @@ describe('update-transaction tool', () => {
       expect(result.isError).toBeUndefined();
     });
 
-    it('should resolve transfer payee for a subtransaction of a split', async () => {
+    it('should update same-category splits with two resolved payees', async () => {
       vi.mocked(updateTransaction).mockResolvedValue(undefined);
-      vi.mocked(getPayees).mockResolvedValue([
-        { id: 'payee-savings', name: 'Transfer: Savings', transfer_acct: 'savings-account-id' },
-      ]);
 
-      const args = {
+      const result = await handler({
         id: 'txn-123',
         subtransactions: [
-          { id: 'sub-1', amount: -3000, category: 'cat-groceries' },
-          { id: 'sub-2', amount: -2000, transfer_account_id: 'savings-account-id' },
+          { id: 'child-a', amount: '-20.00', category: 'shared-category', payee: 'shop a' },
+          { id: 'child-b', amount: '-30.00', category: 'shared-category', payee: 'payee-b' },
         ],
-      };
+      });
 
-      const result = await handler(args);
-
-      expect(getPayees).toHaveBeenCalled();
       expect(updateTransaction).toHaveBeenCalledWith('txn-123', {
         subtransactions: [
-          { id: 'sub-1', amount: -3000, category: 'cat-groceries' },
-          { id: 'sub-2', amount: -2000, payee: 'payee-savings' },
+          { id: 'child-a', amount: '-20.00', category: 'shared-category', payee: 'payee-a' },
+          { id: 'child-b', amount: '-30.00', category: 'shared-category', payee: 'payee-b' },
         ],
       });
       expect(result.isError).toBeUndefined();
     });
 
-    it('should return error when a subtransaction transfer payee is not found', async () => {
-      vi.mocked(getPayees).mockResolvedValue([]);
-
-      const args = {
+    it('should reject a split total mismatch before writing', async () => {
+      const result = await handler({
         id: 'txn-123',
-        subtransactions: [{ id: 'sub-1', amount: -2000, transfer_account_id: 'nonexistent-account-id' }],
-      };
-
-      const result = await handler(args);
+        subtransactions: [{ amount: '-20.00' }, { amount: '-20.00' }],
+      });
 
       expect(result.isError).toBe(true);
-      expect((result.content[0] as { text: string }).text).toContain('No transfer payee found');
       expect(updateTransaction).not.toHaveBeenCalled();
     });
 

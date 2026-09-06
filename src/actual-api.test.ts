@@ -96,6 +96,57 @@ describe('initActualApi syncing', () => {
     );
   });
 
+  it('preserves and verifies distinct payees on same-category split children', async () => {
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.getTransactions)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'txn-split', amount: -1000 }] as never);
+    vi.mocked(api.aqlQuery).mockResolvedValue({
+      data: [
+        {
+          id: 'txn-split',
+          amount: -1000,
+          subtransactions: [
+            { amount: -400, category: 'shared-category', payee: 'payee-a' },
+            { amount: -600, category: 'shared-category', payee: 'payee-b' },
+          ],
+        },
+      ],
+    } as never);
+
+    await expect(
+      createTransaction('account-1', {
+        date: '2026-09-06',
+        amount: '-10.00',
+        subtransactions: [
+          { amount: '-4.00', category: 'shared-category', payee: 'payee-a' },
+          { amount: '-6.00', category: 'shared-category', payee: 'payee-b' },
+        ],
+      })
+    ).resolves.toBe('txn-split');
+
+    expect(api.addTransactions).toHaveBeenCalledWith(
+      'account-1',
+      [
+        {
+          date: '2026-09-06',
+          amount: -1000,
+          category: undefined,
+          subtransactions: [
+            { amount: -400, category: 'shared-category', payee: 'payee-a' },
+            { amount: -600, category: 'shared-category', payee: 'payee-b' },
+          ],
+        },
+      ],
+      { runTransfers: true }
+    );
+  });
+
   it('fails an update when Actual does not return the updated transaction', async () => {
     vi.mocked(api.updateTransaction).mockResolvedValue([]);
     await expect(updateTransaction('txn-1', { amount: '12.34' })).rejects.toThrow(
@@ -118,6 +169,46 @@ describe('initActualApi syncing', () => {
     await expect(updateTransaction('txn-1', { category: 'category-2' })).resolves.toMatchObject([
       { id: 'txn-1', category: 'category-2' },
     ]);
+  });
+
+  it('clears the parent category and verifies child payees on a split update', async () => {
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.updateTransaction).mockResolvedValue(undefined as never);
+    vi.mocked(api.aqlQuery).mockResolvedValue({
+      data: [
+        {
+          id: 'txn-1',
+          amount: -1000,
+          category: null,
+          subtransactions: [
+            { id: 'child-a', amount: -400, category: 'shared-category', payee: 'payee-a' },
+            { id: 'child-b', amount: -600, category: 'shared-category', payee: 'payee-b' },
+          ],
+        },
+      ],
+    } as never);
+
+    await expect(
+      updateTransaction('txn-1', {
+        subtransactions: [
+          { id: 'child-a', amount: '-4.00', category: 'shared-category', payee: 'payee-a' },
+          { id: 'child-b', amount: '-6.00', category: 'shared-category', payee: 'payee-b' },
+        ],
+      })
+    ).resolves.toHaveLength(1);
+
+    expect(api.updateTransaction).toHaveBeenCalledWith('txn-1', {
+      category: null,
+      subtransactions: [
+        { id: 'child-a', amount: -400, category: 'shared-category', payee: 'payee-a' },
+        { id: 'child-b', amount: -600, category: 'shared-category', payee: 'payee-b' },
+      ],
+    });
   });
 });
 

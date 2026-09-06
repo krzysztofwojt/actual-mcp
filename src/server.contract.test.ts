@@ -47,6 +47,28 @@ describe('MCP tool contract', () => {
     }
   });
 
+  it('exposes payee on split children for create, update, and import tools', async () => {
+    const client = await connect(true);
+    const tools = (await client.listTools()).tools;
+    const schemaFor = (name: string): { properties?: Record<string, unknown> } =>
+      tools.find((item) => item.name === name)?.inputSchema as {
+        properties?: Record<string, unknown>;
+      };
+    const directSplitProperties = (name: string): Record<string, unknown> | undefined =>
+      (
+        schemaFor(name).properties?.subtransactions as {
+          items?: { properties?: Record<string, unknown> };
+        }
+      ).items?.properties;
+    const importTransactions = schemaFor('import-transactions').properties?.transactions as {
+      items?: { properties?: { subtransactions?: { items?: { properties?: Record<string, unknown> } } } };
+    };
+
+    expect(directSplitProperties('create-transaction')).toHaveProperty('payee');
+    expect(directSplitProperties('update-transaction')).toHaveProperty('payee');
+    expect(importTransactions.items?.properties?.subtransactions?.items?.properties).toHaveProperty('payee');
+  });
+
   it('returns an MCP tool error for an unknown tool', async () => {
     const client = await connect(true);
     const result = await client.callTool({ name: 'does-not-exist', arguments: {} });

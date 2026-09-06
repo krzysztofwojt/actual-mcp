@@ -112,6 +112,17 @@
 * update response type of accounts tool. test return is correct ([3dbe79a](https://github.com/s-stefanov/actual-mcp/commit/3dbe79a665a26acea6133812f36bf8a41ac60eae))
 * use constant-time comparison for bearer token validation ([#194](https://github.com/s-stefanov/actual-mcp/issues/194)) ([d761cea](https://github.com/s-stefanov/actual-mcp/commit/d761cead6b322549d26012b1cc662a03acf50f53))
 * use valid JSON Schema 2020-12 for rule value types ([#26](https://github.com/s-stefanov/actual-mcp/issues/26)) ([6ee4c7e](https://github.com/s-stefanov/actual-mcp/commit/6ee4c7e4c72e3b341a0acc261ffe231781acdbdf))
+## [1.12.1-kwojt.6] - 2026-09-06
+
+### Features
+
+* support independent payees on split children for create, update, and import transaction tools
+* resolve child payees by exact ID or unique case-insensitive name without implicit payee creation
+
+### Safety
+
+* reject mismatched split totals before writing
+* verify split amounts, categories, and payees after create and update through grouped transaction readback
 
 ## [1.12.1](https://github.com/s-stefanov/actual-mcp/compare/v1.12.0...v1.12.1) (2026-08-11)
 
