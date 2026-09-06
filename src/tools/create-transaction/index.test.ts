@@ -23,6 +23,11 @@ describe('create-transaction tool', () => {
       { id: 'checking-account-id', name: 'Checking transfer source' },
       { id: 'savings-account-id', name: 'Savings' },
     ]);
+    vi.mocked(actualApi.getPayees).mockResolvedValue([
+      { id: 'payee-123', name: 'Main shop' },
+      { id: 'payee-a', name: 'Shop A' },
+      { id: 'payee-b', name: 'Shop B' },
+    ]);
   });
 
   describe('schema', () => {
@@ -47,6 +52,8 @@ describe('create-transaction tool', () => {
       expect(properties).toHaveProperty('cleared');
       expect(properties).toHaveProperty('subtransactions');
       expect(properties).toHaveProperty('transfer_account_id');
+      const splitSchema = properties?.subtransactions as { items?: { properties?: Record<string, unknown> } };
+      expect(splitSchema.items?.properties).toHaveProperty('payee');
     });
   });
 
@@ -126,6 +133,56 @@ describe('create-transaction tool', () => {
         ],
       });
       expect(result.isError).toBeUndefined();
+    });
+
+    it('should create same-category splits with two resolved payees', async () => {
+      vi.mocked(actualApi.createTransaction).mockResolvedValue('transaction-split-payees');
+
+      const result = await handler({
+        account: 'account-456',
+        date: '2026-09-06',
+        amount: '-100.00',
+        subtransactions: [
+          { amount: '-40.00', category: 'shared-category', payee: 'Shop A' },
+          { amount: '-60.00', category: 'shared-category', payee: 'payee-b' },
+        ],
+      });
+
+      expect(actualApi.createTransaction).toHaveBeenCalledWith('account-456', {
+        date: '2026-09-06',
+        amount: '-100.00',
+        subtransactions: [
+          { amount: '-40.00', category: 'shared-category', payee: 'payee-a' },
+          { amount: '-60.00', category: 'shared-category', payee: 'payee-b' },
+        ],
+      });
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('should reject a split total mismatch before writing', async () => {
+      const result = await handler({
+        account: 'account-456',
+        date: '2026-09-06',
+        amount: '-100.00',
+        subtransactions: [{ amount: '-40.00' }, { amount: '-50.00' }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(textContent(result.content[0])).toContain('SPLIT_TOTAL_MISMATCH');
+      expect(actualApi.createTransaction).not.toHaveBeenCalled();
+    });
+
+    it('should reject an unknown child payee before writing', async () => {
+      const result = await handler({
+        account: 'account-456',
+        date: '2026-09-06',
+        amount: '-10.00',
+        subtransactions: [{ amount: '-10.00', payee: 'Unknown shop' }],
+      });
+
+      expect(result.isError).toBe(true);
+      expect(textContent(result.content[0])).toContain('UNKNOWN_PAYEE');
+      expect(actualApi.createTransaction).not.toHaveBeenCalled();
     });
   });
 

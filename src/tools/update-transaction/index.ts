@@ -1,8 +1,9 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { toJSONSchema } from 'zod';
 import { error, success, errorFromCatch } from '../../utils/response.js';
-import { getAccounts, updateTransaction } from '../../actual-api.js';
+import { getAccounts, getPayees, getTransactionById, updateTransaction } from '../../actual-api.js';
 import { resolveEntity } from '../../core/input/entity-resolver.js';
+import { assertSplitTotal, hasPayeeReferences, resolveTransactionPayees } from '../../core/input/transaction-payees.js';
 import { UpdateTransactionArgsSchema, type UpdateTransactionArgs, ToolInput } from '../../types.js';
 
 export const schema = {
@@ -25,11 +26,32 @@ export async function handler(args: UpdateTransactionArgs): Promise<CallToolResu
           'Use create-payee to get or create a payee, then pass its id via the payee field instead.'
       );
     }
+    if (
+      args &&
+      typeof args === 'object' &&
+      'subtransactions' in args &&
+      Array.isArray(args.subtransactions) &&
+      args.subtransactions.some(
+        (item) => item && typeof item === 'object' && 'payee_name' in (item as Record<string, unknown>)
+      )
+    ) {
+      return error(
+        'payee_name is not supported for subtransactions. Pass an existing payee id or unique name via payee.'
+      );
+    }
 
     const validatedArgs = UpdateTransactionArgsSchema.parse(args);
     const { id: transactionId, ...updateData } = validatedArgs;
     if (updateData.account) {
       updateData.account = resolveEntity(updateData.account, await getAccounts(), (item) => item.name, 'account').id;
+    }
+    if (hasPayeeReferences(updateData)) {
+      resolveTransactionPayees(updateData, await getPayees());
+    }
+    if (updateData.subtransactions && updateData.subtransactions.length > 0) {
+      const currentAmount = updateData.amount ?? (await getTransactionById(transactionId))?.amount;
+      if (currentAmount === undefined) throw new Error(`UNKNOWN_TRANSACTION: ${transactionId}`);
+      assertSplitTotal(currentAmount, updateData.subtransactions);
     }
 
     // Filter out undefined values to only send fields that were explicitly provided

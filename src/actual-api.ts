@@ -197,6 +197,18 @@ export async function getTransactions(accountId: string, start?: string, end?: s
   return getTransactionsWithOptionalBounds(accountId, start, end);
 }
 
+async function queryTransactionById(id: string): Promise<TransactionEntity | undefined> {
+  const readback = (await api.aqlQuery(
+    api.q('transactions').filter({ id }).select('*').options({ splits: 'grouped' })
+  )) as { data?: TransactionEntity[] };
+  return Array.isArray(readback?.data) ? readback.data.find((item) => item.id === id) : undefined;
+}
+
+export async function getTransactionById(id: string): Promise<TransactionEntity | undefined> {
+  await initActualApi();
+  return queryTransactionById(id);
+}
+
 /**
  * Get all rules (ensures API is initialized)
  */
@@ -315,6 +327,7 @@ export async function createTransaction(accountId: string, data: TransactionData
   const converted = {
     ...data,
     amount: parseMoney(data.amount),
+    ...(data.subtransactions && data.subtransactions.length > 0 ? { category: undefined } : {}),
     subtransactions: data.subtransactions?.map((item) => ({ ...item, amount: parseMoney(item.amount) })),
   };
   await api.addTransactions(accountId, [converted], { runTransfers: true });
@@ -324,6 +337,18 @@ export async function createTransaction(accountId: string, data: TransactionData
   );
   if (created.length !== 1) {
     throw new Error(`TRANSACTION_CREATE_READBACK_MISMATCH: expected one new transaction, found ${created.length}`);
+  }
+  if (converted.subtransactions && converted.subtransactions.length > 0) {
+    const stored = await queryTransactionById(created[0].id);
+    if (
+      !stored ||
+      !transactionContainsUpdate(stored as unknown as Record<string, unknown>, {
+        amount: converted.amount,
+        subtransactions: converted.subtransactions,
+      })
+    ) {
+      throw new Error(`TRANSACTION_CREATE_READBACK_MISMATCH: split ${created[0].id}`);
+    }
   }
   return created[0].id;
 }
@@ -349,6 +374,7 @@ export async function updateTransaction(id: string, data: UpdateTransactionData)
   const converted = {
     ...data,
     ...(data.amount === undefined ? {} : { amount: parseMoney(data.amount) }),
+    ...(data.subtransactions && data.subtransactions.length > 0 ? { category: null } : {}),
     ...(data.subtransactions === undefined
       ? {}
       : { subtransactions: data.subtransactions.map((item) => ({ ...item, amount: parseMoney(item.amount) })) }),
@@ -362,14 +388,10 @@ export async function updateTransaction(id: string, data: UpdateTransactionData)
   // continues. Query the stored transaction instead of treating the mutation
   // response as a readback record.
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const readback = (await api.aqlQuery(
-      api.q('transactions').filter({ id }).select('*').options({ splits: 'grouped' })
-    )) as { data?: TransactionEntity[] };
-    const transactions = Array.isArray(readback?.data) ? readback.data : [];
-    const stored = transactions.find((item) => item.id === id) as Record<string, unknown> | undefined;
+    const stored = (await queryTransactionById(id)) as unknown as Record<string, unknown> | undefined;
 
     if (stored && transactionContainsUpdate(stored, converted as Record<string, unknown>)) {
-      return transactions;
+      return [stored];
     }
     if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 50));
   }

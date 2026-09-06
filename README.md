@@ -19,11 +19,11 @@ The Actual Budget MCP Server allows you to interact with your personal financial
 #### Transaction & Account Management
 
 - **`get-transactions`** - Retrieve and filter transactions by account, date, amount, category, or payee, including native transfer and schedule link IDs. Omitting `startDate`, `endDate`, or `limit` leaves that bound unrestricted; an explicit positive `limit` is applied after all other filters.
-- **`create-transaction`** - Create a new transaction in an account with optional category, payee, and notes
-- **`update-transaction`** - Update an existing transaction with new category, payee, notes, or amount
+- **`create-transaction`** - Create a new transaction in an account with optional category, payee, notes, and split children. Each split child can use its own existing payee by exact ID or unique case-insensitive name.
+- **`update-transaction`** - Update an existing transaction with new category, payee, notes, amount, or a full replacement list of split children. Split children can share a category while using different payees.
 - **`get-accounts`** - Retrieve a list of all accounts with their current balance and ID
 - **`balance-history`** - View balance changes for one account or, when `accountId` is omitted, an aggregate of open on-budget accounts. `months` defaults to 3; `includeOffBudget` affects only aggregate reports.
-- **`delete-transaction`**, **`import-transactions`** - Delete or reconcile/import transactions
+- **`delete-transaction`**, **`import-transactions`** - Delete or reconcile/import transactions, including split children with independent payees
 - **`create-account`**, **`update-account`**, **`close-account`**, **`reopen-account`**, **`delete-account`** - Full account lifecycle
 - **`reconcile-account`** - Create and verify an explicit balance adjustment
 

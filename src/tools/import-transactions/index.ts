@@ -5,8 +5,9 @@
 import { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { toJSONSchema } from 'zod';
 import { success, errorFromCatch } from '../../utils/response.js';
-import { importTransactions } from '../../actual-api.js';
+import { getPayees, importTransactions } from '../../actual-api.js';
 import { parseMoney } from '../../core/input/money.js';
+import { assertSplitTotal, hasPayeeReferences, resolveTransactionPayees } from '../../core/input/transaction-payees.js';
 import { ImportTransactionsArgsSchema, type ImportTransactionsArgs, ToolInput } from '../../types.js';
 
 export const schema = {
@@ -23,11 +24,19 @@ export async function handler(args: ImportTransactionsArgs): Promise<CallToolRes
     const { accountId, transactions, defaultCleared, dryRun, reimportDeleted } =
       ImportTransactionsArgsSchema.parse(args);
 
+    const needsPayees = transactions.some((transaction) => hasPayeeReferences(transaction));
+    const payees = needsPayees ? await getPayees() : [];
+    for (const transaction of transactions) {
+      assertSplitTotal(transaction.amount, transaction.subtransactions);
+      resolveTransactionPayees(transaction, payees);
+    }
+
     // Exact decimal strings are converted once to integer minor units for Actual's API.
     const entities = transactions.map((t) => ({
       ...t,
       account: accountId,
       amount: parseMoney(t.amount),
+      ...(t.subtransactions && t.subtransactions.length > 0 ? { category: undefined } : {}),
       subtransactions: t.subtransactions?.map((s) => ({
         ...s,
         amount: parseMoney(s.amount),

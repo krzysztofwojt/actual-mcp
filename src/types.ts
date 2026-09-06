@@ -91,6 +91,7 @@ export const UpdateSubtransactionSchema = z.object({
     .describe('The ID of an existing subtransaction to update. Omit to add a new subtransaction.'),
   amount: MoneyInputSchema.describe('Required exact decimal amount, for example -12.34'),
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
+  payee: z.string().optional().describe('Exact payee ID or unique case-insensitive payee name for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
 });
 
@@ -136,6 +137,7 @@ export type UpdateTransactionData = z.infer<typeof UpdateTransactionDataSchema>;
 export const SubtransactionSchema = z.object({
   amount: MoneyInputSchema.describe('Required exact decimal amount, for example -12.34'),
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
+  payee: z.string().optional().describe('Exact payee ID or unique case-insensitive payee name for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
 });
 
@@ -198,6 +200,7 @@ export type TransactionData = z.infer<typeof TransactionDataSchema>;
 export const ImportSubtransactionSchema = z.object({
   amount: MoneyStringSchema.describe('Required exact decimal amount, for example -3.24'),
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
+  payee: z.string().optional().describe('Exact payee ID or unique case-insensitive payee name for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
 });
 

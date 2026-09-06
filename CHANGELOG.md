@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.12.1-kwojt.6] - 2026-09-06
+
+### Features
+
+* support independent payees on split children for create, update, and import transaction tools
+* resolve child payees by exact ID or unique case-insensitive name without implicit payee creation
+
+### Safety
+
+* reject mismatched split totals before writing
+* verify split amounts, categories, and payees after create and update through grouped transaction readback
+
 ## [1.12.1](https://github.com/s-stefanov/actual-mcp/compare/v1.12.0...v1.12.1) (2026-08-11)
 
 
