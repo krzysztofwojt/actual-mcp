@@ -17,6 +17,17 @@ const validRule = {
   actions: [{ field: 'category', op: 'set', value: 'category-1' }],
 };
 
+const formulaSplitAction = {
+  field: null,
+  op: 'set-split-amount' as const,
+  value: null,
+  options: {
+    splitIndex: 1,
+    method: 'formula' as const,
+    formula: '=parent_amount',
+  },
+};
+
 describe('rule handler validation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,5 +63,101 @@ describe('rule handler validation', () => {
 
     expect(result.isError).toBeUndefined();
     expect(actualApi.updateRule).toHaveBeenCalledWith({ id: 'rule-1', conditionsOp: 'or' });
+  });
+
+  it('creates a formula split action and returns the native action on readback', async () => {
+    const rule = { ...validRule, actions: [formulaSplitAction] };
+    vi.mocked(actualApi.createRule).mockResolvedValue({ id: 'rule-formula' } as never);
+    vi.mocked(actualApi.getRules).mockResolvedValue([{ id: 'rule-formula', ...rule }] as never);
+
+    const result = await createRule(rule);
+
+    expect(result.isError).toBeUndefined();
+    expect(actualApi.createRule).toHaveBeenCalledWith(rule);
+    expect(actualApi.getRules).toHaveBeenCalled();
+    const content = result.content[0];
+    expect(content.type).toBe('text');
+    if (content.type === 'text') {
+      expect(content.text).toContain('"method":"formula"');
+      expect(content.text).toContain('"formula":"=parent_amount"');
+    }
+  });
+
+  it('updates a formula split action and returns the native action on readback', async () => {
+    const changes = { id: 'rule-formula', actions: [formulaSplitAction] };
+    vi.mocked(actualApi.updateRule).mockResolvedValue({ id: 'rule-formula' } as never);
+    vi.mocked(actualApi.getRules).mockResolvedValue([
+      { id: 'rule-formula', ...validRule, actions: changes.actions },
+    ] as never);
+
+    const result = await updateRule(changes);
+
+    expect(result.isError).toBeUndefined();
+    expect(actualApi.updateRule).toHaveBeenCalledWith(changes);
+    const content = result.content[0];
+    expect(content.type).toBe('text');
+    if (content.type === 'text') {
+      expect(content.text).toContain('"method":"formula"');
+      expect(content.text).toContain('"formula":"=parent_amount"');
+    }
+  });
+
+  it.each([
+    ['fixed-amount', -66194],
+    ['fixed-percent', 25],
+    ['remainder', 0],
+  ])('round-trips the %s split method', async (method, value) => {
+    const rule = {
+      ...validRule,
+      actions: [
+        {
+          field: null,
+          op: 'set-split-amount',
+          value,
+          options: { splitIndex: 1, method },
+        },
+      ],
+    };
+    vi.mocked(actualApi.createRule).mockResolvedValue({ id: 'rule-fixed' } as never);
+    vi.mocked(actualApi.getRules).mockResolvedValue([{ id: 'rule-fixed', ...rule }] as never);
+
+    const result = await createRule(rule);
+
+    expect(result.isError).toBeUndefined();
+    expect(actualApi.createRule).toHaveBeenCalledWith(rule);
+    const content = result.content[0];
+    expect(content.type).toBe('text');
+    if (content.type === 'text') {
+      expect(content.text).toContain(`"method":"${method}"`);
+    }
+  });
+
+  it('rejects invalid formula split actions before calling Actual', async () => {
+    const invalidCreate = {
+      ...validRule,
+      actions: [
+        {
+          ...formulaSplitAction,
+          options: { ...formulaSplitAction.options, formula: 'parent_amount' },
+        },
+      ],
+    };
+    const invalidUpdate = {
+      id: 'rule-formula',
+      actions: [
+        {
+          ...formulaSplitAction,
+          options: { ...formulaSplitAction.options, method: 'remainder' as const },
+        },
+      ],
+    };
+
+    const createResult = await createRule(invalidCreate);
+    const updateResult = await updateRule(invalidUpdate);
+
+    expect(createResult.isError).toBe(true);
+    expect(updateResult.isError).toBe(true);
+    expect(actualApi.createRule).not.toHaveBeenCalled();
+    expect(actualApi.updateRule).not.toHaveBeenCalled();
   });
 });
