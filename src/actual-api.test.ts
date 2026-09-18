@@ -243,6 +243,68 @@ describe('initActualApi syncing', () => {
     expect(api.updateTransaction).toHaveBeenCalledTimes(1);
   });
 
+  it('still rejects a correct source update when the old native counterpart survives', async () => {
+    vi.useRealTimers();
+    const before = {
+      id: 'txn-1',
+      account: 'source',
+      amount: -76489,
+      payee: 'transfer',
+      transfer_id: 'old-counterpart',
+      notes: 'SPŁATA ODSETEK',
+      date: '2025-04-08',
+      is_parent: false,
+      subtransactions: [],
+    };
+    const observed = { ...before, payee: 'bank', category: 'mortgage', transfer_id: null };
+    const counterpart = {
+      id: 'old-counterpart',
+      account: 'destination',
+      amount: 76489,
+      payee: 'source-payee',
+      transfer_id: 'txn-1',
+      date: '2025-04-08',
+      notes: 'SPŁATA ODSETEK',
+    };
+    let mutated = false;
+    let queryId: string;
+    const query = {
+      filter: vi.fn((filter: { id: string }) => {
+        queryId = filter.id;
+        return query;
+      }),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.getPayees).mockResolvedValueOnce([
+      { id: 'bank' },
+      { id: 'transfer', transfer_acct: 'destination' },
+      { id: 'source-payee', transfer_acct: 'source' },
+    ] as never);
+    vi.mocked(api.aqlQuery).mockImplementation(async () => ({
+      data: queryId === 'old-counterpart' ? [counterpart] : [mutated ? observed : before],
+    }));
+    vi.mocked(api.updateTransaction).mockImplementationOnce(async () => {
+      mutated = true;
+      return undefined as never;
+    });
+    const result = await updateTransaction('txn-1', {
+      payee: 'bank',
+      category: 'mortgage',
+      notes: 'SPŁATA ODSETEK',
+    }).catch((error: Error) => error);
+    expect(result).toBeInstanceOf(Error);
+    const message = (result as Error).message;
+    expect(message).toContain('TRANSACTION_UPDATE_READBACK_MISMATCH');
+    expect(message).toContain('"rollbackPerformed":false');
+    expect(message).toContain('"observed":' + JSON.stringify(observed));
+    expect(message).toContain(
+      '"counterpartStates":[{"id":"old-counterpart","transaction":' + JSON.stringify(counterpart) + '}]'
+    );
+    expect(api.updateTransaction).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects invalid split totals before writing', async () => {
     const query = {
       filter: vi.fn().mockReturnThis(),

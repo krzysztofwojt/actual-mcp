@@ -15,7 +15,8 @@ import { parseMoney } from './core/input/money.js';
 import {
   transactionContainsUpdate,
   nativeCategoryMayBeCleared,
-  verifySplitTransfers,
+  verifyTransactionTransfers,
+  type CounterpartState,
   type TransactionRecord,
 } from './domain/transaction-update-verification.js';
 
@@ -274,8 +275,9 @@ export async function updateTransaction(id: string, data: UpdateTransactionData)
   const before = await queryTransactionById(id);
   // Resolve transfer metadata before mutation: a lookup failure must not follow a write.
   const hasSplit = Boolean(converted.subtransactions || before?.subtransactions?.length);
-  const payees = hasSplit ? await api.getPayees() : [];
-  const accounts = hasSplit ? await api.getAccounts() : [];
+  const needsTransferMetadata = hasSplit || Boolean(before?.transfer_id) || converted.payee !== undefined;
+  const payees = needsTransferMetadata ? await api.getPayees() : [];
+  const accounts = needsTransferMetadata ? await api.getAccounts() : [];
   const categoryMayBeCleared = nativeCategoryMayBeCleared(converted.account ?? before?.account, accounts, payees);
   if (converted.subtransactions && before) {
     const total = converted.subtransactions.reduce((sum, child) => sum + Number(child.amount), 0);
@@ -292,29 +294,27 @@ export async function updateTransaction(id: string, data: UpdateTransactionData)
 
   let stored: TransactionRecord | undefined;
   let counterparts: TransactionRecord[] = [];
+  let counterpartStates: CounterpartState[] = [];
   let readbackError: unknown;
   // Actual 26.8.1 returns undefined while the asynchronous native write continues.
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
       stored = (await queryTransactionById(id)) as unknown as TransactionRecord | undefined;
-      if (stored && transactionContainsUpdate(stored, converted as TransactionRecord, categoryMayBeCleared)) {
-        const transferState = await verifySplitTransfers(
+      if (stored) {
+        const transferState = await verifyTransactionTransfers(
+          before as unknown as TransactionRecord | undefined,
           stored,
           payees,
           async (counterpartId) =>
             (await queryTransactionById(counterpartId)) as unknown as TransactionRecord | undefined
         );
         counterparts = transferState.counterparts;
-        if (transferState.matches) return [stored];
-      } else if (stored) {
-        counterparts = [];
-        const children = Array.isArray(stored.subtransactions) ? (stored.subtransactions as TransactionRecord[]) : [];
-        for (const child of children) {
-          if (typeof child.transfer_id === 'string') {
-            const counterpart = await queryTransactionById(child.transfer_id);
-            if (counterpart) counterparts.push(counterpart as unknown as TransactionRecord);
-          }
-        }
+        counterpartStates = transferState.counterpartStates;
+        if (
+          transactionContainsUpdate(stored, converted as TransactionRecord, categoryMayBeCleared) &&
+          transferState.matches
+        )
+          return [stored];
       }
       readbackError = undefined;
     } catch (error) {
@@ -335,6 +335,7 @@ export async function updateTransaction(id: string, data: UpdateTransactionData)
         before: before ?? null,
         observed: stored ?? null,
         counterparts,
+        counterpartStates,
         readbackError: readbackError instanceof Error ? readbackError.message : readbackError,
         mutationError: mutationError instanceof Error ? mutationError.message : mutationError,
       })
