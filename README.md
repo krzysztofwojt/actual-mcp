@@ -45,6 +45,17 @@ Actual stores a posted schedule occurrence directly on the transaction in the na
 
 When `update-schedule.resetNextDate` is omitted, the next occurrence is recalculated only if the schedule date or recurrence changes. An explicit boolean overrides that behavior.
 
+Split updates preserve the parent transaction ID and use Actual's native transfer engine.
+Readback matches children by supplied ID or by their requested fields, independently of native sort order,
+and checks reciprocal links and amounts for transfer counterparts. Readback accepts native category clearing
+for off-budget source accounts and transfers between accounts of the same budget type. `get-transactions` includes split child details.
+A `TRANSACTION_UPDATE_READBACK_MISMATCH` after a write includes JSON with `writeAttempted`,
+`rollbackPerformed`, `state`, `retrySafe`, `before`, `observed`, and `counterparts`.
+Amounts in these snapshots use Actual's integer minor units. `state: "unknown"` means readback failed;
+otherwise the snapshots describe the observed state after the write. No automatic rollback is performed.
+Do not blindly retry: first inspect the reported state and read the transaction again.
+Invalid split totals are rejected before writing.
+
 #### Reporting & Analytics
 
 - **`spending-by-category`** - Generate spending breakdowns categorized by type. Omitted date bounds are unrestricted; income is excluded unless `includeIncome` is true.

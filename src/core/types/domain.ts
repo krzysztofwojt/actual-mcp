@@ -20,6 +20,9 @@ export interface Transaction {
   category_name?: string;
   notes?: string;
   transfer_id?: string;
+  is_parent?: boolean;
+  parent_id?: string;
+  subtransactions?: Transaction[];
   schedule?: string;
   cleared?: boolean;
 }

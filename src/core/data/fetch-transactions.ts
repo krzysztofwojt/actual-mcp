@@ -35,8 +35,9 @@ async function _enrichTransactions(transactions: TransactionEntity[]): Promise<T
   }
 
   // # Reason: Only fetch lookup tables when transactions are missing names to avoid redundant API calls.
-  const needsPayees = transactions.some((transaction) => Boolean(transaction.payee));
-  const needsCategories = transactions.some((transaction) => Boolean(transaction.category));
+  const allRecords = transactions.flatMap((transaction) => [transaction, ...(transaction.subtransactions ?? [])]);
+  const needsPayees = allRecords.some((transaction) => Boolean(transaction.payee));
+  const needsCategories = allRecords.some((transaction) => Boolean(transaction.category));
 
   if (!needsPayees && !needsCategories) {
     return transactions;
@@ -47,7 +48,7 @@ async function _enrichTransactions(transactions: TransactionEntity[]): Promise<T
     includeCategories: needsCategories,
   });
 
-  return transactions.map((transaction: TransactionEntity) => {
+  const enrich = (transaction: TransactionEntity): Transaction => {
     const payeeName = needsPayees && transaction.payee ? payeesById[transaction.payee]?.name : undefined;
     const categoryName =
       needsCategories && transaction.category ? categoriesById[transaction.category]?.name : undefined;
@@ -62,8 +63,10 @@ async function _enrichTransactions(transactions: TransactionEntity[]): Promise<T
       enriched.category_name = categoryName;
     }
 
+    if (transaction.subtransactions) enriched.subtransactions = transaction.subtransactions.map(enrich);
     return enriched;
-  });
+  };
+  return transactions.map(enrich);
 }
 
 export async function fetchTransactionsForAccount(

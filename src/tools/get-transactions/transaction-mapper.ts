@@ -2,18 +2,21 @@
 import { formatAmount, formatDate } from '../../utils.js';
 import type { Transaction } from '../../types.js';
 
+export interface MappedTransaction {
+  id: string;
+  date: string;
+  payee: string;
+  category: string;
+  amount: string;
+  notes: string;
+  cleared: boolean;
+  transferId: string;
+  scheduleId: string;
+  subtransactions?: MappedTransaction[];
+}
+
 export class GetTransactionsMapper {
-  map(transactions: Transaction[]): Array<{
-    id: string;
-    date: string;
-    payee: string;
-    category: string;
-    amount: string;
-    notes: string;
-    cleared: boolean;
-    transferId: string;
-    scheduleId: string;
-  }> {
+  map(transactions: Transaction[]): MappedTransaction[] {
     return transactions.map((t) => ({
       id: t.id,
       date: formatDate(t.date),
@@ -24,6 +27,7 @@ export class GetTransactionsMapper {
       cleared: t.cleared ?? false,
       transferId: t.transfer_id || '',
       scheduleId: t.schedule || '',
+      ...(t.subtransactions ? { subtransactions: this.map(t.subtransactions) } : {}),
     }));
   }
 }

@@ -7,6 +7,12 @@ import { APIAccountEntity, APICategoryEntity, APICategoryGroupEntity, APIPayeeEn
 import { RuleEntity, TransactionEntity } from '@actual-app/core/types/models';
 import { ImportTransactionEntity } from '@actual-app/core/types/models/import-transaction';
 import { parseMoney } from './core/input/money.js';
+import {
+  transactionContainsUpdate,
+  nativeCategoryMayBeCleared,
+  verifySplitTransfers,
+  type TransactionRecord,
+} from './domain/transaction-update-verification.js';
 
 const DEFAULT_DATA_DIR: string = path.resolve(os.homedir() || '.', '.actual');
 const DEFAULT_SYNC_TTL_MS = 0;
@@ -379,49 +385,74 @@ export async function updateTransaction(id: string, data: UpdateTransactionData)
       ? {}
       : { subtransactions: data.subtransactions.map((item) => ({ ...item, amount: parseMoney(item.amount) })) }),
   };
-  const result = await api.updateTransaction(id, converted as unknown as Partial<TransactionEntity>);
-  if (Array.isArray(result) && result.length === 0) {
-    throw new Error(`TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}`);
+  const before = await queryTransactionById(id);
+  // Resolve transfer metadata before mutation: a lookup failure must not follow a write.
+  const hasSplit = Boolean(converted.subtransactions || before?.subtransactions?.length);
+  const payees = hasSplit ? await api.getPayees() : [];
+  const accounts = hasSplit ? await api.getAccounts() : [];
+  const categoryMayBeCleared = nativeCategoryMayBeCleared(converted.account ?? before?.account, accounts, payees);
+  if (converted.subtransactions && before) {
+    const total = converted.subtransactions.reduce((sum, child) => sum + Number(child.amount), 0);
+    if (converted.subtransactions.length === 0 || total !== (converted.amount ?? before.amount)) {
+      throw new Error(`SPLIT_TOTAL_MISMATCH: ${id}. No write attempted.`);
+    }
+  }
+  let mutationError: unknown;
+  try {
+    await api.updateTransaction(id, converted as unknown as Partial<TransactionEntity>);
+  } catch (error) {
+    mutationError = error;
   }
 
-  // Actual 26.8.1 can return undefined here even though the asynchronous write
-  // continues. Query the stored transaction instead of treating the mutation
-  // response as a readback record.
+  let stored: TransactionRecord | undefined;
+  let counterparts: TransactionRecord[] = [];
+  let readbackError: unknown;
+  // Actual 26.8.1 returns undefined while the asynchronous native write continues.
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    const stored = (await queryTransactionById(id)) as unknown as Record<string, unknown> | undefined;
-
-    if (stored && transactionContainsUpdate(stored, converted as Record<string, unknown>)) {
-      return [stored];
+    try {
+      stored = (await queryTransactionById(id)) as unknown as TransactionRecord | undefined;
+      if (stored && transactionContainsUpdate(stored, converted as TransactionRecord, categoryMayBeCleared)) {
+        const transferState = await verifySplitTransfers(
+          stored,
+          payees,
+          async (counterpartId) =>
+            (await queryTransactionById(counterpartId)) as unknown as TransactionRecord | undefined
+        );
+        counterparts = transferState.counterparts;
+        if (transferState.matches) return [stored];
+      } else if (stored) {
+        counterparts = [];
+        const children = Array.isArray(stored.subtransactions) ? (stored.subtransactions as TransactionRecord[]) : [];
+        for (const child of children) {
+          if (typeof child.transfer_id === 'string') {
+            const counterpart = await queryTransactionById(child.transfer_id);
+            if (counterpart) counterparts.push(counterpart as unknown as TransactionRecord);
+          }
+        }
+      }
+      readbackError = undefined;
+    } catch (error) {
+      readbackError = error;
     }
     if (attempt < 4) await new Promise((resolve) => setTimeout(resolve, 50));
   }
 
-  throw new Error(`TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}`);
-}
-
-function transactionContainsUpdate(stored: Record<string, unknown>, update: Record<string, unknown>): boolean {
-  return Object.entries(update).every(([field, expected]) => {
-    if (expected === undefined) return true;
-    if (field !== 'subtransactions') return stored[field] === expected;
-    if (!Array.isArray(expected) || !Array.isArray(stored[field]) || stored[field].length !== expected.length)
-      return false;
-
-    return expected.every((expectedSubtransaction, index) => {
-      const expectedFields = expectedSubtransaction as Record<string, unknown>;
-      const storedSubtransactions = stored[field] as Array<Record<string, unknown>>;
-      const storedSubtransaction =
-        typeof expectedFields.id === 'string'
-          ? storedSubtransactions.find((item) => item.id === expectedFields.id)
-          : storedSubtransactions[index];
-      return Boolean(
-        storedSubtransaction &&
-        Object.entries(expectedFields).every(
-          ([subtransactionField, subtransactionValue]) =>
-            subtransactionValue === undefined || storedSubtransaction[subtransactionField] === subtransactionValue
-        )
-      );
-    });
-  });
+  // # Reason: automatic rollback could overwrite concurrent bank/client edits.
+  // Report observed state explicitly instead of pretending a failed check undid the write.
+  throw new Error(
+    `TRANSACTION_UPDATE_READBACK_MISMATCH: ${id}. ` +
+      JSON.stringify({
+        writeAttempted: true,
+        rollbackPerformed: false,
+        state: readbackError ? 'unknown' : 'observed_after_write',
+        retrySafe: false,
+        before: before ?? null,
+        observed: stored ?? null,
+        counterparts,
+        readbackError: readbackError instanceof Error ? readbackError.message : readbackError,
+        mutationError: mutationError instanceof Error ? mutationError.message : mutationError,
+      })
+  );
 }
 
 /**
