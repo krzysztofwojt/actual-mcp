@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   transactionContainsUpdate,
   verifySplitTransfers,
+  verifyTransactionTransfers,
   nativeCategoryMayBeCleared,
 } from './transaction-update-verification.js';
 
@@ -163,4 +164,117 @@ it('permits native category clearing only for eligible source/destination accoun
       canClear
     )
   ).toBe(false);
+});
+
+const standaloneBefore = {
+  id: 'source-transaction',
+  account: 'source',
+  amount: -89161,
+  payee: 'transfer',
+  category: 'mortgage',
+  notes: 'Kapitał',
+  date: '2024-10-28',
+  transfer_id: 'old-counterpart',
+  is_parent: false,
+  subtransactions: [],
+};
+const standaloneNormal = { ...standaloneBefore, payee: 'bank', transfer_id: null };
+const standaloneCounterpart = { ...counterpart, id: 'old-counterpart', transfer_id: 'source-transaction' };
+
+it('accepts empty grouped children for a standalone transaction but rejects empty split parents', async () => {
+  expect((await verifySplitTransfers(standaloneNormal, payees, async () => undefined)).matches).toBe(true);
+  expect(
+    (await verifySplitTransfers({ ...standaloneNormal, is_parent: true }, payees, async () => undefined)).matches
+  ).toBe(false);
+});
+
+it('accepts unlinking a standalone transfer only when its old counterpart disappears', async () => {
+  const result = await verifyTransactionTransfers(standaloneBefore, standaloneNormal, payees, async () => undefined);
+  expect(result.matches).toBe(true);
+  expect(result.counterpartStates).toEqual([{ id: 'old-counterpart', transaction: null }]);
+  for (const stale of [standaloneCounterpart, { ...standaloneCounterpart, transfer_id: null, payee: null }]) {
+    const failed = await verifyTransactionTransfers(standaloneBefore, standaloneNormal, payees, async () => stale);
+    expect(failed.matches).toBe(false);
+    expect(failed.counterparts).toEqual([stale]);
+  }
+});
+
+it('accepts native detachment of a counterpart child without deleting the other split', async () => {
+  const detachedChild = {
+    ...standaloneCounterpart,
+    is_child: true,
+    parent_id: 'other-parent',
+    transfer_id: null,
+    payee: null,
+  };
+  expect(
+    (await verifyTransactionTransfers(standaloneBefore, standaloneNormal, payees, async () => detachedChild)).matches
+  ).toBe(true);
+  expect(
+    (
+      await verifyTransactionTransfers(standaloneBefore, standaloneNormal, payees, async () => ({
+        ...detachedChild,
+        payee: 'source-payee',
+      }))
+    ).matches
+  ).toBe(false);
+});
+
+it('verifies standalone native transfers, including inverse amounts and reciprocal links', async () => {
+  expect(
+    (await verifyTransactionTransfers(standaloneNormal, standaloneBefore, payees, async () => standaloneCounterpart))
+      .matches
+  ).toBe(true);
+  for (const failed of [
+    undefined,
+    { ...standaloneCounterpart, amount: 190848 },
+    { ...standaloneCounterpart, transfer_id: 'wrong' },
+    { ...standaloneCounterpart, account: 'wrong' },
+  ]) {
+    expect(
+      (await verifyTransactionTransfers(standaloneNormal, standaloneBefore, payees, async () => failed)).matches
+    ).toBe(false);
+  }
+  expect(
+    (
+      await verifyTransactionTransfers(
+        standaloneNormal,
+        { ...standaloneBefore, transfer_id: null },
+        payees,
+        async () => standaloneCounterpart
+      )
+    ).matches
+  ).toBe(false);
+  expect(
+    (
+      await verifyTransactionTransfers(
+        standaloneBefore,
+        { ...standaloneNormal, transfer_id: 'old-counterpart' },
+        payees,
+        async () => standaloneCounterpart
+      )
+    ).matches
+  ).toBe(false);
+});
+
+it('does not mask incorrect payee, category, notes or amounts on standalone transactions', () => {
+  const request = { payee: 'bank', category: 'mortgage', notes: 'Kapitał', amount: -89161 };
+  expect(transactionContainsUpdate(standaloneNormal, request)).toBe(true);
+  for (const bad of [{ payee: 'transfer' }, { category: 'wrong' }, { notes: 'wrong' }, { amount: -1 }]) {
+    expect(transactionContainsUpdate({ ...standaloneNormal, ...bad }, request)).toBe(false);
+  }
+});
+
+it('uses the native category policy for standalone transfers as well as split children', () => {
+  const accounts = [
+    { id: 'source', offbudget: false },
+    { id: 'destination', offbudget: false },
+  ];
+  const canClear = nativeCategoryMayBeCleared('source', accounts, payees);
+  expect(transactionContainsUpdate({ ...standaloneBefore, category: null }, { category: 'mortgage' }, canClear)).toBe(
+    true
+  );
+  expect(transactionContainsUpdate({ ...standaloneNormal, category: null }, { category: 'mortgage' }, canClear)).toBe(
+    false
+  );
 });

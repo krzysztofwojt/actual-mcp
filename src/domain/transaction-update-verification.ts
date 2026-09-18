@@ -8,7 +8,11 @@ export function transactionContainsUpdate(
 ): boolean {
   return Object.entries(update).every(([field, expected]) => {
     if (expected === undefined) return true;
-    if (field !== 'subtransactions') return stored[field] === expected;
+    if (field !== 'subtransactions') {
+      return (
+        stored[field] === expected || (field === 'category' && stored.category === null && categoryMayBeCleared(stored))
+      );
+    }
     if (!Array.isArray(expected) || !Array.isArray(stored[field]) || stored[field].length !== expected.length)
       return false;
     const children = stored[field] as TransactionRecord[];
@@ -47,41 +51,105 @@ interface TransferPayee {
   transfer_acct?: string | null;
 }
 
-/** Verify native reciprocal links; counterpart IDs are not source child IDs. */
+interface TransferVerification {
+  matches: boolean;
+  counterparts: TransactionRecord[];
+}
+
+type ReadTransaction = (id: string) => Promise<TransactionRecord | undefined>;
+
+/** Verify native reciprocal links; counterpart IDs are not source transaction IDs. */
+async function verifyTransferRecord(
+  transaction: TransactionRecord,
+  payees: TransferPayee[],
+  read: ReadTransaction,
+  counterparts: TransactionRecord[]
+): Promise<boolean> {
+  const destination = payees.find((payee) => payee.id === transaction.payee)?.transfer_acct;
+  if (!destination) return transaction.transfer_id == null;
+  const counterpart = typeof transaction.transfer_id === 'string' ? await read(transaction.transfer_id) : undefined;
+  if (counterpart) counterparts.push(counterpart);
+  const sourcePayee = payees.find((payee) => payee.transfer_acct === transaction.account)?.id;
+  return Boolean(
+    counterpart &&
+    counterpart.id !== transaction.id &&
+    counterpart.is_parent !== true &&
+    counterpart.account === destination &&
+    counterpart.transfer_id === transaction.id &&
+    counterpart.amount === -Number(transaction.amount) &&
+    counterpart.date === transaction.date &&
+    counterpart.notes === transaction.notes &&
+    counterpart.payee === sourcePayee
+  );
+}
+
+/** Empty grouped children do not turn a standalone transaction into a split. */
 export async function verifySplitTransfers(
   parent: TransactionRecord,
   payees: TransferPayee[],
-  read: (id: string) => Promise<TransactionRecord | undefined>
-): Promise<{ matches: boolean; counterparts: TransactionRecord[] }> {
+  read: ReadTransaction
+): Promise<TransferVerification> {
   const counterparts: TransactionRecord[] = [];
-  if (!Array.isArray(parent.subtransactions)) return { matches: true, counterparts };
-  const children = parent.subtransactions as TransactionRecord[];
-  let matches =
-    parent.is_parent === true && children.reduce((sum, child) => sum + Number(child.amount), 0) === parent.amount;
+  const children = Array.isArray(parent.subtransactions) ? (parent.subtransactions as TransactionRecord[]) : [];
+  if (parent.is_parent !== true) return { matches: children.length === 0, counterparts };
+  let matches = children.length > 0 && children.reduce((sum, child) => sum + Number(child.amount), 0) === parent.amount;
   for (const child of children) {
-    const destination = payees.find((payee) => payee.id === child.payee)?.transfer_acct;
     if (child.parent_id !== parent.id || child.account !== parent.account) matches = false;
-    if (!destination) {
-      if (child.transfer_id) matches = false;
-      continue;
-    }
-    const counterpart = typeof child.transfer_id === 'string' ? await read(child.transfer_id) : undefined;
-    if (counterpart) counterparts.push(counterpart);
-    const sourcePayee = payees.find((payee) => payee.transfer_acct === parent.account)?.id;
-    if (
-      !counterpart ||
-      counterpart.id === child.id ||
-      counterpart.account !== destination ||
-      counterpart.transfer_id !== child.id ||
-      counterpart.amount !== -Number(child.amount) ||
-      counterpart.date !== child.date ||
-      counterpart.notes !== child.notes ||
-      counterpart.payee !== sourcePayee
-    ) {
-      matches = false;
-    }
+    if (!(await verifyTransferRecord(child, payees, read, counterparts))) matches = false;
   }
   return { matches, counterparts };
+}
+
+export interface CounterpartState {
+  id: string;
+  transaction: TransactionRecord | null;
+}
+
+/** Reconcile current native transfers and counterparts unlinked by this update. */
+export async function verifyTransactionTransfers(
+  before: TransactionRecord | undefined,
+  stored: TransactionRecord,
+  payees: TransferPayee[],
+  read: ReadTransaction
+): Promise<TransferVerification & { counterpartStates: CounterpartState[] }> {
+  const states = new Map<string, TransactionRecord | null>();
+  const readCounterpart: ReadTransaction = async (id) => {
+    if (!states.has(id)) states.set(id, (await read(id)) ?? null);
+    return states.get(id) ?? undefined;
+  };
+  const children = Array.isArray(stored.subtransactions) ? (stored.subtransactions as TransactionRecord[]) : [];
+  const isSplit = stored.is_parent === true || children.length > 0;
+  const result = isSplit
+    ? await verifySplitTransfers(stored, payees, readCounterpart)
+    : {
+        matches: await verifyTransferRecord(stored, payees, readCounterpart, []),
+        counterparts: [],
+      };
+  const currentRows = isSplit ? children : [stored];
+  const oldRows =
+    before?.is_parent === true && Array.isArray(before.subtransactions)
+      ? (before.subtransactions as TransactionRecord[])
+      : before
+        ? [before]
+        : [];
+  for (const oldRow of oldRows) {
+    const id = oldRow.transfer_id;
+    if (typeof id !== 'string' || currentRows.some((row) => row.transfer_id === id)) continue;
+    const oldCounterpart = await readCounterpart(id);
+    // # Reason: Actual deletes standalone counterparts, but detaches counterpart
+    // children in place to preserve the other account's split parent and amount.
+    if (
+      oldCounterpart &&
+      !(oldCounterpart.is_child === true && oldCounterpart.transfer_id == null && oldCounterpart.payee == null)
+    ) {
+      result.matches = false;
+    }
+  }
+  return {
+    matches: result.matches,
+    counterparts: [...states.values()].filter((row): row is TransactionRecord => row !== null),
+    counterpartStates: [...states.entries()].map(([id, transaction]) => ({ id, transaction })),
+  };
 }
 
 /** Native category clearing is permitted only by the source/destination account policy. */
