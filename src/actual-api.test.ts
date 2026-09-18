@@ -8,6 +8,8 @@ vi.mock('@actual-app/api', () => ({
   shutdown: vi.fn(),
   getAccounts: vi.fn(),
   getTransactions: vi.fn(),
+  getPayees: vi.fn().mockResolvedValue([]),
+  getAccounts: vi.fn().mockResolvedValue([]),
   q: vi.fn(),
   aqlQuery: vi.fn(),
   addTransactions: vi.fn(),
@@ -148,6 +150,14 @@ describe('initActualApi syncing', () => {
   });
 
   it('fails an update when Actual does not return the updated transaction', async () => {
+    vi.useRealTimers();
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.aqlQuery).mockResolvedValue({ data: [] });
     vi.mocked(api.updateTransaction).mockResolvedValue([]);
     await expect(updateTransaction('txn-1', { amount: '12.34' })).rejects.toThrow(
       'TRANSACTION_UPDATE_READBACK_MISMATCH'
@@ -171,6 +181,82 @@ describe('initActualApi syncing', () => {
     ]);
   });
 
+  it('verifies reversed ID-less split children through the update readback path', async () => {
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.aqlQuery).mockResolvedValue({
+      data: [
+        {
+          id: 'txn-1',
+          is_parent: true,
+          account: 'source',
+          amount: -1000,
+          category: null,
+          subtransactions: [
+            { id: 'b', parent_id: 'txn-1', account: 'source', amount: -600, category: 'cat', payee: 'bank' },
+            { id: 'a', parent_id: 'txn-1', account: 'source', amount: -400, category: 'cat', payee: 'bank' },
+          ],
+        },
+      ],
+    } as never);
+    await expect(
+      updateTransaction('txn-1', {
+        subtransactions: [
+          { amount: '-4', category: 'cat', payee: 'bank' },
+          { amount: '-6', category: 'cat', payee: 'bank' },
+        ],
+      })
+    ).resolves.toHaveLength(1);
+  });
+
+  it('reports observed state after an actual mismatch without attempting rollback', async () => {
+    vi.useRealTimers();
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.aqlQuery).mockResolvedValue({ data: [{ id: 'txn-1', amount: -500 }] } as never);
+    await expect(updateTransaction('txn-1', { amount: '-6' })).rejects.toThrow(
+      '"observed":{"id":"txn-1","amount":-500}'
+    );
+    expect(api.updateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports unknown state if readback fails after mutation', async () => {
+    vi.useRealTimers();
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.aqlQuery)
+      .mockResolvedValueOnce({ data: [{ id: 'txn-1', amount: -500 }] } as never)
+      .mockRejectedValue(new Error('read unavailable'));
+    await expect(updateTransaction('txn-1', { amount: '-6' })).rejects.toThrow('"state":"unknown","retrySafe":false');
+    expect(api.updateTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid split totals before writing', async () => {
+    const query = {
+      filter: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      options: vi.fn().mockReturnThis(),
+    };
+    vi.mocked(api.q).mockReturnValue(query as never);
+    vi.mocked(api.aqlQuery).mockResolvedValue({ data: [{ id: 'txn-1', amount: -1000 }] } as never);
+    await expect(updateTransaction('txn-1', { subtransactions: [{ amount: '-4' }] })).rejects.toThrow(
+      'SPLIT_TOTAL_MISMATCH'
+    );
+    expect(api.updateTransaction).not.toHaveBeenCalled();
+  });
+
   it('clears the parent category and verifies child payees on a split update', async () => {
     const query = {
       filter: vi.fn().mockReturnThis(),
@@ -183,11 +269,27 @@ describe('initActualApi syncing', () => {
       data: [
         {
           id: 'txn-1',
+          is_parent: true,
+          account: 'account-1',
           amount: -1000,
           category: null,
           subtransactions: [
-            { id: 'child-a', amount: -400, category: 'shared-category', payee: 'payee-a' },
-            { id: 'child-b', amount: -600, category: 'shared-category', payee: 'payee-b' },
+            {
+              id: 'child-a',
+              parent_id: 'txn-1',
+              account: 'account-1',
+              amount: -400,
+              category: 'shared-category',
+              payee: 'payee-a',
+            },
+            {
+              id: 'child-b',
+              parent_id: 'txn-1',
+              account: 'account-1',
+              amount: -600,
+              category: 'shared-category',
+              payee: 'payee-b',
+            },
           ],
         },
       ],

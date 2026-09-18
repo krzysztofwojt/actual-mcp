@@ -1,3 +1,5 @@
+import type { MappedTransaction } from './transaction-mapper.js';
+
 // Generates the response/report for get-transactions tool
 import type { MappedTransaction } from './transaction-mapper.js';
 
