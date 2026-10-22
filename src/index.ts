@@ -281,6 +281,15 @@ async function main(): Promise<void> {
       try {
         let session = sessionHeader ? streamableSessions.get(sessionHeader) : undefined;
 
+        if (sessionHeader && !session) {
+          res.status(404).json({
+            jsonrpc: '2.0',
+            error: { code: -32001, message: 'Session not found' },
+            id: null,
+          });
+          return;
+        }
+
         if (!session) {
           if (req.method === 'POST' && isInitializeRequest(req.body)) {
             const remoteAddress = req.ip ?? req.socket.remoteAddress ?? 'unknown';
