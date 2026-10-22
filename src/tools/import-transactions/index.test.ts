@@ -205,10 +205,10 @@ describe('import-transactions tool', () => {
         transactions: [
           {
             date: '2025-01-01',
-            amount: -100,
+            amount: '-100.00',
             subtransactions: [
-              { amount: -60, category: 'cat-groceries' },
-              { amount: -40, transfer_account_id: 'savings-account-id' },
+              { amount: '-60.00', category: 'cat-groceries' },
+              { amount: '-40.00', transfer_account_id: 'savings-account-id' },
             ],
           },
         ],
@@ -230,7 +230,7 @@ describe('import-transactions tool', () => {
             ],
           },
         ],
-        { defaultCleared: undefined, dryRun: undefined }
+        { defaultCleared: undefined, dryRun: undefined, reimportDeleted: undefined }
       );
       expect(result.isError).toBeUndefined();
     });
@@ -243,8 +243,8 @@ describe('import-transactions tool', () => {
         transactions: [
           {
             date: '2025-01-01',
-            amount: -100,
-            subtransactions: [{ amount: -100, transfer_account_id: 'nonexistent-account-id' }],
+            amount: '-100.00',
+            subtransactions: [{ amount: '-100.00', transfer_account_id: 'nonexistent-account-id' }],
           },
         ],
       };

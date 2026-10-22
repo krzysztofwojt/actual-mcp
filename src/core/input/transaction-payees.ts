@@ -25,7 +25,8 @@ export function resolveTransactionPayees<TSubtransaction extends SubtransactionW
     if (subtransaction.transfer_account_id) {
       const destination = subtransaction.transfer_account_id;
       const payee = payees.find((item) => item.transfer_acct === destination);
-      if (!payee) throw new Error(`No transfer payee found for account ${destination}. Ensure the destination account exists.`);
+      if (!payee)
+        throw new Error(`No transfer payee found for account ${destination}. Ensure the destination account exists.`);
       subtransaction.payee = payee.id;
       delete subtransaction.transfer_account_id;
     }
@@ -36,7 +37,9 @@ export function resolveTransactionPayees<TSubtransaction extends SubtransactionW
 }
 
 export function hasPayeeReferences(transaction: TransactionWithPayees<SubtransactionWithPayee>): boolean {
-  return Boolean(transaction.payee || transaction.subtransactions?.some((item) => item.payee || item.transfer_account_id));
+  return Boolean(
+    transaction.payee || transaction.subtransactions?.some((item) => item.payee || item.transfer_account_id)
+  );
 }
 
 /** Reject invalid splits before Actual accepts them with an error marker visible only in the UI. */

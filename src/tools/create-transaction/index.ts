@@ -58,9 +58,10 @@ export async function handler(args: CreateTransactionArgs): Promise<CallToolResu
 
     const id: string = await createTransaction(accountId, transactionData);
 
-    const message = transfer_account_id || hasSplitTransfer
-      ? `Successfully created transfer transaction ${id} (counterpart created in destination account)`
-      : `Successfully created transaction ${id}`;
+    const message =
+      transfer_account_id || hasSplitTransfer
+        ? `Successfully created transfer transaction ${id} (counterpart created in destination account)`
+        : `Successfully created transaction ${id}`;
 
     return successWithJson(message);
   } catch (err) {

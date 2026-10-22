@@ -17,7 +17,15 @@ vi.mock('@actual-app/api', () => ({
 }));
 
 import * as api from '@actual-app/api';
-import { createTransaction, updateTransaction, getAccounts, getAccountBalance, getReports, initActualApi, shutdownActualApi } from './actual-api.js';
+import {
+  createTransaction,
+  updateTransaction,
+  getAccounts,
+  getAccountBalance,
+  getReports,
+  initActualApi,
+  shutdownActualApi,
+} from './actual-api.js';
 import { getActualConnection, resetActualConnectionForTests } from './integrations/actual/connection.js';
 
 describe('initActualApi syncing', () => {

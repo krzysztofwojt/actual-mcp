@@ -270,10 +270,10 @@ describe('create-transaction tool', () => {
       const args: CreateTransactionArgs = {
         account: 'checking-account-id',
         date: '2025-12-18',
-        amount: -10000,
+        amount: '-100.00',
         subtransactions: [
-          { amount: -6000, category: 'cat-groceries' },
-          { amount: -4000, transfer_account_id: 'savings-account-id' },
+          { amount: '-60.00', category: 'cat-groceries' },
+          { amount: '-40.00', transfer_account_id: 'savings-account-id' },
         ],
       };
 
@@ -282,10 +282,10 @@ describe('create-transaction tool', () => {
       expect(actualApi.getPayees).toHaveBeenCalled();
       expect(actualApi.createTransaction).toHaveBeenCalledWith('checking-account-id', {
         date: '2025-12-18',
-        amount: -10000,
+        amount: '-100.00',
         subtransactions: [
-          { amount: -6000, category: 'cat-groceries' },
-          { amount: -4000, payee: 'payee-savings' },
+          { amount: '-60.00', category: 'cat-groceries' },
+          { amount: '-40.00', payee: 'payee-savings' },
         ],
       });
       expect(result.isError).toBeUndefined();
@@ -299,8 +299,8 @@ describe('create-transaction tool', () => {
       const args: CreateTransactionArgs = {
         account: 'checking-account-id',
         date: '2025-12-18',
-        amount: -10000,
-        subtransactions: [{ amount: -10000, transfer_account_id: 'nonexistent-account-id' }],
+        amount: '-100.00',
+        subtransactions: [{ amount: '-100.00', transfer_account_id: 'nonexistent-account-id' }],
       };
 
       const result = await handler(args);
