@@ -1,8 +1,33 @@
 diff --git a/node_modules/@actual-app/api/dist/index.js b/node_modules/@actual-app/api/dist/index.js
-index 6c633d2..d16c74e 100644
+index 6c633d2..34f11ce 100644
 --- a/node_modules/@actual-app/api/dist/index.js
 +++ b/node_modules/@actual-app/api/dist/index.js
-@@ -60133,24 +60133,32 @@ async function patch(url, data, headers = {}, timeout = null) {
+@@ -60061,7 +60061,7 @@ async function post(url, data, headers = {}, timeout = null, externalSignal) {
+ 		throw new PostError("parse-json", { meta: text });
+ 	}
+ 	if (responseData.status !== "ok") {
+-		logger.log("API call failed: " + url + "\nData: " + JSON.stringify(data, null, 2) + "\nResponse: " + JSON.stringify(res, null, 2));
++		logger.log("Actual API request rejected");
+ 		throw new PostError(responseData.description || responseData.reason || "unknown");
+ 	}
+ 	return responseData.data;
+@@ -60094,7 +60094,7 @@ async function del(url, data, headers = {}, timeout = null) {
+ 		throw new PostError("parse-json", { meta: text });
+ 	}
+ 	if (res.status !== "ok") {
+-		logger.log("API call failed: " + url + "\nData: " + JSON.stringify(data, null, 2) + "\nResponse: " + JSON.stringify(res, null, 2));
++		logger.log("Actual API request rejected");
+ 		throw new PostError(res.description || res.reason || "unknown");
+ 	}
+ 	return res.data;
+@@ -60127,30 +60127,38 @@ async function patch(url, data, headers = {}, timeout = null) {
+ 		throw new PostError("parse-json", { meta: text });
+ 	}
+ 	if (res.status !== "ok") {
+-		logger.log("API call failed: " + url + "\nData: " + JSON.stringify(data, null, 2) + "\nResponse: " + JSON.stringify(res, null, 2));
++		logger.log("Actual API request rejected");
+ 		throw new PostError(res.description || res.reason || "unknown");
+ 	}
  	return res.data;
  }
  async function postBinary(url, data, headers) {
@@ -38,6 +63,24 @@ index 6c633d2..d16c74e 100644
  }
  function get$1(url, opts) {
  	return fetch$1(url, opts).then((res) => res.text());
+@@ -62286,7 +62294,7 @@ var fullSync = once(async function() {
+ 	try {
+ 		messages = await _fullSync(null, 0, null);
+ 	} catch (e) {
+-		logger.log(e);
++		if (!(e instanceof PostError && e.reason === "network-failure")) logger.log(e);
+ 		if (e instanceof SyncError) if (e.reason === "out-of-sync") {
+ 			captureException(e);
+ 			app$22.events.emit("sync", {
+@@ -62314,7 +62322,7 @@ var fullSync = once(async function() {
+ 			meta: e.meta
+ 		});
+ 		else if (e instanceof PostError) {
+-			logger.log(e);
++			if (!(e instanceof PostError && e.reason === "network-failure")) logger.log(e);
+ 			if (e.reason === "unauthorized") {
+ 				app$22.events.emit("sync", { type: "unauthorized" });
+ 				setItem("readOnly", "true");
 @@ -108475,6 +108483,7 @@ var Action = class {
  				let cellValue;
  				if (fieldValues[key] === void 0 || fieldValues[key] === null || typeof fieldValues[key] === "object") cellValue = "";

@@ -353,6 +353,29 @@ timeout and server keep-alive hints; a 1000 ms threshold is subtracted from hint
 This keeps idle connections below the Actual server's 5-second timeout. Adjust
 the value downward if your server uses a shorter idle timeout.
 
+Safe retries are limited to login, budget download, and CRDT synchronization.
+Each retry uses a separate Agent and fresh connection. Financial mutation handlers,
+imports, transfers, and bank sync are called once. A failure after a mutation
+starts returns `MUTATION_OUTCOME_UNCERTAIN`; reconcile state before submitting again.
+The completed-operation ledger does not establish exactly-once delivery for failed
+or interrupted operations.
+
+| Variable | Default | Accepted values |
+| --- | --- | --- |
+| `ACTUAL_HTTP_REQUEST_TIMEOUT_MS` | 15000 | Integer 1–300000; response header and idle body timeout |
+| `ACTUAL_SYNC_REQUEST_TIMEOUT_MS` | 15000 | Positive finite number; absolute binary sync deadline including response body |
+| `ACTUAL_HTTP_RETRY_ATTEMPTS` | 3 | Integer 1–5, including the initial attempt |
+| `ACTUAL_HTTP_RETRY_DELAY_MS` | 500 | Integer 1–10000, multiplied by the failed attempt number |
+
+Invalid values use defaults. Retry logs contain only operation, attempt, error
+code, fresh-connection flag, elapsed time and retry decision. Recovery emits one
+summary. No URL, credentials, budget IDs, financial payload or stack is logged by
+the retry layer. Authentication rejection, certificate errors, HTTP rate limits
+and unknown errors are not retried. The HTTP warmup remains a background readiness
+loop with a 15-second pause between network-failed initialization cycles; terminal
+configuration or authentication errors stop warmup until configuration is fixed
+and the process is restarted.
+
 ## Development
 
 For development with auto-rebuild:

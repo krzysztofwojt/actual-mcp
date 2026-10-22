@@ -20,6 +20,7 @@ import { randomUUID } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { isValidBearerToken } from './utils/bearer-auth.js';
 import { initActualApi, shutdownActualApi } from './actual-api.js';
+import { warmActualApiUntilReady } from './core/connection/actual-warmup.js';
 import { fetchAllAccounts } from './core/data/fetch-accounts.js';
 import { createServer } from './server.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -108,19 +109,6 @@ const safeStringify = (value: unknown): string => {
 
 const toErrorMessage = (value: unknown): string =>
   value instanceof Error ? `${value.name}: ${value.message}` : safeStringify(value);
-
-async function warmActualApiUntilReady(): Promise<void> {
-  for (;;) {
-    try {
-      await initActualApi();
-      process.stderr.write('Actual Budget API warmup complete\n');
-      return;
-    } catch (error) {
-      process.stderr.write('Actual Budget API warmup failed: ' + toErrorMessage(error) + '; retrying in 15s\n');
-      await new Promise((resolve) => setTimeout(resolve, 15000));
-    }
-  }
-}
 
 // Reason: a rejection or throw from anywhere in the process (e.g. an unawaited async
 // side-effect inside @actual-app/api, see s-stefanov/actual-mcp#150 and #95) otherwise
@@ -334,7 +322,7 @@ async function main(): Promise<void> {
         process.stderr.write(`Error: ${toErrorMessage(error)}\n`);
       } else {
         process.stderr.write(`Actual Budget MCP Server (HTTP) listening on port ${resolvedPort}\n`);
-        void warmActualApiUntilReady();
+        void warmActualApiUntilReady(initActualApi);
       }
     });
     // SIGINT handler: close all active connections

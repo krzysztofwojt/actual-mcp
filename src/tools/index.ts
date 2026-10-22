@@ -153,7 +153,6 @@ export const setupTools = (server: Server, enableWrite: boolean): void => {
         });
       });
     } catch (err) {
-      console.error(`Error executing tool ${request.params.name}:`, err);
       return errorFromCatch(err);
     }
   });

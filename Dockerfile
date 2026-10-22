@@ -4,6 +4,7 @@ FROM node:24-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
+COPY patches ./patches
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . ./
@@ -17,6 +18,7 @@ WORKDIR /app
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/package-lock.json ./
 COPY --from=builder /app/build ./build
+COPY --from=builder /app/patches ./patches
 
 ENV NODE_ENV=production
 ENV TMPDIR=/tmp

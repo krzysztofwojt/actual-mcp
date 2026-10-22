@@ -148,7 +148,8 @@ export async function executeMutation(request: MutationRequest): Promise<CallToo
     });
     if (mutationStarted) {
       throw new Error(
-        'MUTATION_OUTCOME_UNCERTAIN: the write was not automatically retried. Reconcile the budget before resubmitting.',
+        'MUTATION_OUTCOME_UNCERTAIN: the write was not automatically retried. Reconcile the budget before resubmitting. ' +
+          (error instanceof Error ? error.message : 'Unknown mutation failure'),
         { cause: error }
       );
     }

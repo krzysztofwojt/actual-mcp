@@ -11,3 +11,6 @@
 
 # Reduce diff noise for lock files
 package-lock.json -diff
+
+# Unified patch context contains a space followed by upstream tab indentation.
+patches/*.patch -whitespace
