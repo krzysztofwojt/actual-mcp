@@ -341,6 +341,18 @@ if it cannot be applied. Actual API/core are pinned to 26.9.0 to match the NAS
 snapshot. The patch preserves bounded binary sync requests and split parent-field
 handling. Build history and source reconciliation: [NAS notes](deploy/nas-20260930/README.md).
 
+## Actual HTTP connections
+
+Actual requests use an origin-scoped Undici dispatcher compatible with Node 24's
+built-in `fetch`, including the function cached by `@actual-app/api`. Other origins
+retain their previous dispatcher. No request is replayed by this dispatcher.
+
+`ACTUAL_HTTP_KEEPALIVE_TIMEOUT_MS` defaults to **2000 ms** (positive integer,
+maximum 4000 ms; invalid values use the default). It caps both the ordinary idle
+timeout and server keep-alive hints; a 1000 ms threshold is subtracted from hints.
+This keeps idle connections below the Actual server's 5-second timeout. Adjust
+the value downward if your server uses a shorter idle timeout.
+
 ## Development
 
 For development with auto-rebuild:

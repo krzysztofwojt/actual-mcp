@@ -1,4 +1,5 @@
 import * as api from '@actual-app/api';
+import { configureActualHttp, closeActualHttp } from './core/connection/actual-http.js';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
@@ -116,6 +117,7 @@ export async function initActualApi(): Promise<void> {
     const password = process.env.ACTUAL_PASSWORD;
     // Reason: InitConfig is a discriminated union in 26.x — NoServerConfig forbids serverURL/password
     const initConfig = serverURL ? { dataDir, serverURL, password: password ?? '' } : { dataDir };
+    configureActualHttp();
     await api.init(initConfig);
 
     const budgets: BudgetFile[] = await api.getBudgets();
@@ -170,10 +172,9 @@ export async function shutdownActualApi(): Promise<void> {
   } finally {
     initialized = false;
     lastSyncAt = 0;
+    await closeActualHttp();
   }
 }
-
-// Fetch operations
 
 /**
  * Get all accounts (ensures API is initialized)
