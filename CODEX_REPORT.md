@@ -49,7 +49,7 @@ Downloaded pristine `@actual-app/api@26.9.0` with npm pack under ignored `.upgra
 
 Parent-context is already in 26.10.0. Its postBinary still has no abort signal, so only the cancellation cluster is patched. A facade Promise.race would leave the SDK fetch/body and native operation running, making retries overlap; the SDK uses its own captured fetch, so a generic application fetch wrapper is insufficient. The version-specific patch is the bounded solution. Tests evaluate the actual installed patched function with synthetic transport/body stalls, HTTP errors, invalid timeout configuration and timer cleanup. These are cancellation unit tests, not a live SDK/server integration test. The bundled source map is not regenerated for this small patch; nearby SDK stack offsets can differ.
 
-Docker copies patches before npm ci, compiles native dependencies in its builder, prunes there and copies the result to runtime. Removed the old fork's redundant runtime npm ci, which would otherwise discard builder-compiled modules and lack a compiler. Container construction was not run. patch-package stays a production dependency because production-only npm installs must also apply the patch.
+Docker copies patches before npm ci, compiles native dependencies in its builder, prunes there and copies the result to runtime. Removed the old fork's redundant runtime npm ci, which would otherwise discard builder-compiled modules and lack a compiler. Ignored .upgrade-tmp downloads/caches are also excluded from the Docker context. Container construction was not run. patch-package stays a production dependency because production-only npm installs must also apply the patch.
 
 ## Older patchers: checked, not blindly replayed
 
@@ -74,7 +74,7 @@ Build comparison caveat: effective build has 388 files, release baseline 28. Onl
 
 Rebase conflicts affected package/lock/version identity, fork release workflow/Docker setup, README, API lifecycle/mutations, transaction types/tools/tests, rule schemas, report mapping and range/balance behavior. Retained upstream connection queue, session-token auth, graceful drain, newer reports/dashboards, rule string-null normalization, optional-account reads and historical balance fixes. Layered fork idempotency/mutation safety and decimal validation on top. Duplicate read/write budget tool names are collapsed by name, choosing later stricter fork definitions. Contract tests assert 21 unique read tools and 71 unique tools with writes enabled; every write requires operationId. The new lockfile was regenerated from the final dependency manifest rather than choosing either conflicted binary lockfile.
 
-Added commits after replay: dce6c63 (integration), 9b15c85 (reliability/scopes), f31e3c4 (resources), a853f8f (SDK timeout/version), cc66e99 (fixture alignment/formatting), and this report/release metadata commit. Older replayed commits remain focused historical changes; no other branches/worktrees were rewritten.
+Added commits after replay: dce6c63 (integration), 9b15c85 (reliability/scopes), f31e3c4 (resources), a853f8f (SDK timeout/version), cc66e99 (fixture alignment/formatting), a4a8358 (report/release metadata), and the build-context cleanup commit. Older replayed commits remain focused historical changes; no other branches/worktrees were rewritten.
 
 ## Verification
 

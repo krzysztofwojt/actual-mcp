@@ -11,3 +11,6 @@
 
 # Reduce diff noise for lock files
 package-lock.json -diff
+
+# Unified diff context retains upstream SDK tab indentation.
+patches/*.patch -whitespace
