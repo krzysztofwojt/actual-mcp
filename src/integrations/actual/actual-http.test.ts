@@ -178,3 +178,21 @@ it('retries the real SDK login on a new connection despite the SDK discarding th
   expect(log).toHaveBeenCalledTimes(2);
   expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({ operation: 'login', code: 'UND_ERR_SOCKET' });
 });
+
+it('lets inherited SDK background work use the ordinary pool after a fresh attempt finishes', async () => {
+  const origin = await listen((_request, response) => response.end('ok'));
+  vi.stubEnv('ACTUAL_SERVER_URL', origin);
+  configureActualHttp();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let background!: Promise<string>;
+  const post = async (): Promise<string> => (await fetch(origin, { method: 'POST' })).text();
+  await inActualHttpAttempt(true, async () => {
+    background = gate.then(post);
+    return post();
+  });
+  release();
+  expect(await background).toBe('ok');
+});

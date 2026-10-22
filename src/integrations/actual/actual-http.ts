@@ -96,6 +96,10 @@ export async function inActualHttpAttempt<T>(
     return await scope.run(context, () => operation(context));
   } finally {
     // Only this attempt owns this pool. Never destroy a concurrent request's sockets.
-    await context.agent?.close();
+    const ownedAgent = context.agent;
+    // # Reason: SDK timers may inherit this scope and outlive the attempt.
+    // They must use the ordinary pool once the dedicated retry pool is retired.
+    context.agent = undefined;
+    await ownedAgent?.close();
   }
 }
