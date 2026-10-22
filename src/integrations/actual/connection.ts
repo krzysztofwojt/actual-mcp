@@ -1,11 +1,13 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import * as api from '@actual-app/api';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { retryNetwork } from './reliability.js';
 import { BudgetFile } from '../../types.js';
 
 const DEFAULT_DATA_DIR: string = path.resolve(os.homedir() || '.', '.actual');
-const DEFAULT_SYNC_TTL_MS = 60_000;
+const DEFAULT_SYNC_TTL_MS = 0;
 
 /**
  * Build the `api.init()` config from environment variables.
@@ -37,6 +39,7 @@ type ActualApi = Awaited<ReturnType<typeof api.init>>;
 type InitConfig = NonNullable<Parameters<typeof api.init>[0]>;
 
 export class ActualConnection {
+  private readonly readScope = new AsyncLocalStorage<boolean>();
   private state: ConnectionState = 'idle';
   private inflightInit: Promise<void> | null = null;
   private inflightSync: Promise<void> | null = null;
@@ -48,6 +51,28 @@ export class ActualConnection {
   // resolve while a later init step still fails. Track "handle may exist" separately from
   // state so drainAndClose() still shuts the API down after a failed init.
   private apiOpened = false;
+
+  private ready = false;
+
+  constructor() {
+    this.setReady(false);
+  }
+
+  isReady(): boolean {
+    return this.ready;
+  }
+
+  private setReady(ready: boolean): void {
+    this.ready = ready;
+    if (!ready) this.lastSyncAt = 0;
+    const marker = path.join(process.env.ACTUAL_DATA_DIR || DEFAULT_DATA_DIR, '.actual-mcp-ready');
+    try {
+      if (ready) fs.writeFileSync(marker, new Date().toISOString());
+      else fs.rmSync(marker, { force: true });
+    } catch (error) {
+      console.error('Could not update readiness marker:', error);
+    }
+  }
 
   private isClosingOrClosed(): boolean {
     return this.state === 'closing' || this.state === 'closed';
@@ -88,12 +113,13 @@ export class ActualConnection {
    * Concurrent callers share one in-flight init; a failed attempt is not
    * cached — the next call starts a fresh attempt.
    */
-  async ensureReady(): Promise<void> {
+  async ensureReady(refresh = true): Promise<void> {
     if (this.state === 'closing' || this.state === 'closed') {
       throw new Error('ActualConnection is closed');
     }
     if (this.state === 'ready') {
-      return this.syncIfStale();
+      if (refresh && !this.readScope.getStore()) return this.syncIfStale();
+      return;
     }
     if (this.state === 'initializing' && this.inflightInit) {
       return this.inflightInit;
@@ -116,6 +142,18 @@ export class ActualConnection {
     return this.inflightInit;
   }
 
+  /** One forced refresh per request; nested facade reads share its freshness. */
+  async withSyncedRead<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.readScope.getStore()) return operation();
+    await this.sync();
+    return this.readScope.run(true, operation);
+  }
+
+  async sync(): Promise<void> {
+    await this.ensureReady(false);
+    await this.performSync();
+  }
+
   private syncTtlMs(): number {
     const raw = process.env.ACTUAL_SYNC_TTL_MS;
     if (raw === undefined || raw === '') return DEFAULT_SYNC_TTL_MS;
@@ -125,8 +163,7 @@ export class ActualConnection {
 
   /**
    * Pull remote changes into local data when the TTL has elapsed. Concurrent
-   * stale callers share one in-flight sync. A failed sync is logged, not thrown:
-   * answering from slightly stale data beats failing the call.
+   * stale callers share one in-flight sync. Failures propagate to prevent stale answers.
    */
   private syncIfStale(): Promise<void> {
     const ttl = this.syncTtlMs();
@@ -134,12 +171,24 @@ export class ActualConnection {
     if (Date.now() - this.lastSyncAt < ttl) return Promise.resolve();
     if (this.inflightSync) return this.inflightSync;
 
-    this.inflightSync = this.enqueue(() => api.sync())
+    return this.performSync();
+  }
+
+  private performSync(): Promise<void> {
+    if (this.inflightSync) return this.inflightSync;
+    this.inflightSync = this.enqueue(() =>
+      retryNetwork(async () => {
+        try {
+          await api.sync();
+        } catch (error) {
+          this.setReady(false);
+          throw error;
+        }
+      })
+    )
       .then(() => {
         this.lastSyncAt = Date.now();
-      })
-      .catch((error: unknown) => {
-        console.error('Failed to sync with Actual server, continuing with local data:', error);
+        this.setReady(true);
       })
       .finally(() => {
         this.inflightSync = null;
@@ -154,6 +203,7 @@ export class ActualConnection {
   async drainAndClose(): Promise<void> {
     if (this.closePromise) return this.closePromise;
     this.state = 'closing';
+    this.setReady(false);
 
     this.closePromise = (async () => {
       // Await in-flight init and sync first, then whatever operations are queued.
@@ -168,6 +218,7 @@ export class ActualConnection {
         }
       }
       this.state = 'closed';
+      this.setReady(false);
       this.lastSyncAt = 0;
       this.apiOpened = false;
       this.actualLib = null;
@@ -187,26 +238,40 @@ export class ActualConnection {
       fs.mkdirSync(dataDir, { recursive: true });
     }
     this.apiOpened = true;
-    this.actualLib = await api.init(buildInitConfig(dataDir));
-
+    const initConfig = buildInitConfig(dataDir);
     try {
+      this.actualLib = await api.init(initConfig);
       const budgets: BudgetFile[] = await api.getBudgets();
-      if (!budgets || budgets.length === 0) {
+      if ((!budgets || budgets.length === 0) && !process.env.ACTUAL_BUDGET_SYNC_ID?.trim()) {
         throw new Error('No budgets found. Please create a budget in Actual first.');
       }
 
-      const budgetId: string = process.env.ACTUAL_BUDGET_SYNC_ID || budgets[0].cloudFileId || budgets[0].id || '';
+      const configuredId = process.env.ACTUAL_BUDGET_SYNC_ID?.trim();
+      if (!configuredId && budgets.length !== 1)
+        throw new Error('ACTUAL_BUDGET_SYNC_ID_REQUIRED: multiple budgets are available');
+      const budgetId = configuredId || budgets[0]?.cloudFileId || budgets[0]?.id;
+      if (!budgetId) throw new Error('ACTUAL_BUDGET_ID_MISSING');
       console.error(`Loading budget: ${budgetId}`);
-      await api.downloadBudget(
-        budgetId,
-        process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD
-          ? { password: process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD }
-          : undefined
+      await retryNetwork(
+        () =>
+          api.downloadBudget(
+            budgetId,
+            process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD
+              ? { password: process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD }
+              : undefined
+          ),
+        async () => {
+          await api.shutdown();
+          this.actualLib = await api.init(initConfig);
+        },
+        750
       );
 
       // Reason: seed lastSyncAt so the first call after init does not immediately sync.
       this.lastSyncAt = Date.now();
+      this.setReady(true);
     } catch (err) {
+      this.setReady(false);
       // Reason: api.init() already opened native handles. Release them here, before a
       // retry can call api.init() again, instead of leaving the failed attempt's state
       // around for drainAndClose() to find later. If shutdown itself fails, keep

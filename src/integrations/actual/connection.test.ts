@@ -128,12 +128,12 @@ describe('ActualConnection sync-if-stale', () => {
     expect(api.sync).not.toHaveBeenCalled();
   });
 
-  it('keeps serving when a sync fails', async () => {
+  it('rejects stale reads when a sync fails', async () => {
     const conn = getActualConnection();
     await conn.ensureReady();
     vi.mocked(api.sync).mockRejectedValueOnce(new Error('server unreachable'));
     vi.advanceTimersByTime(61_000);
-    await expect(conn.ensureReady()).resolves.toBeUndefined();
+    await expect(conn.ensureReady()).rejects.toThrow('server unreachable');
   });
 });
 

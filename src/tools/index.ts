@@ -4,7 +4,7 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { syncActual } from '../actual-api.js';
+import { withSyncedRead } from '../actual-api.js';
 import { executeMutation, withoutOperationId } from '../core/runtime/operation-runtime.js';
 import { withBudgetLock } from '../core/runtime/operation-queue.js';
 import { error, errorFromCatch } from '../utils/response.js';
@@ -65,7 +65,12 @@ import { metadataReadTools, metadataWriteTools } from './metadata/index.js';
 import { scheduleReadTools, scheduleWriteTools } from './schedules/index.js';
 import { transactionScheduleWriteTools } from './transaction-schedules/index.js';
 
-const readTools = [
+// Later fork definitions retain strict money validation and readback for overlapping tools.
+function uniqueTools<T extends { schema: { name: string } }>(tools: T[]): T[] {
+  return [...new Map(tools.map((tool) => [tool.schema.name, tool])).values()];
+}
+
+const readTools = uniqueTools([
   getTransactions,
   spendingByCategory,
   monthlySummary,
@@ -87,9 +92,9 @@ const readTools = [
   ...budgetReadTools,
   ...metadataReadTools,
   ...scheduleReadTools,
-];
+]);
 
-const writeTools = [
+const writeTools = uniqueTools([
   createCategory,
   updateCategory,
   deleteCategory,
@@ -127,7 +132,7 @@ const writeTools = [
   ...metadataWriteTools,
   ...scheduleWriteTools,
   ...transactionScheduleWriteTools,
-];
+]);
 
 const writeToolNames = new Set(writeTools.map((tool) => tool.schema.name));
 
@@ -185,9 +190,8 @@ export const setupTools = (server: Server, enableWrite: boolean): void => {
       return await withBudgetLock(async () => {
         const args = (rawArgs ?? {}) as Record<string, unknown>;
         if (!writeToolNames.has(name)) {
-          await syncActual();
           // @ts-expect-error: Argument type is handled by the tool schema.
-          return tool.handler(args);
+          return withSyncedRead(() => tool.handler(args));
         }
         if (typeof args.operationId !== 'string' || args.operationId.length < 8) {
           return error('operationId is required for every mutating tool and must contain at least 8 characters');
