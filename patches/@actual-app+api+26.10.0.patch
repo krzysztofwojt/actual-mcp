@@ -1,0 +1,38 @@
+--- a/node_modules/@actual-app/api/dist/index.js
++++ b/node_modules/@actual-app/api/dist/index.js
+@@ -60119,24 +60119,32 @@
+ 	return res.data;
+ }
+ async function postBinary(url, data, headers) {
++	const configuredTimeout = Number(process.env.ACTUAL_SYNC_REQUEST_TIMEOUT_MS);
++	const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 15000;
++	const controller = new AbortController();
++	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+ 	let res;
+ 	try {
+ 		res = await fetch$1(url, {
+ 			method: "POST",
+ 			body: Buffer.from(data),
++			signal: controller.signal,
+ 			headers: {
+ 				"Content-Type": "application/actual-sync",
+ 				...headers
+ 			}
+ 		});
+-	} catch (err) {
+-		throw new PostError("network-failure", void 0, { cause: err });
+-	}
+ 	let buffer;
+ 	if (res.arrayBuffer) buffer = Buffer.from(await res.arrayBuffer());
+ 	else buffer = await res.buffer();
+ 	throwIfNot200(res, buffer.toString());
+ 	return buffer;
++	} catch (err) {
++		if (err instanceof PostError) throw err;
++		throw new PostError("network-failure", void 0, { cause: err });
++	} finally {
++		clearTimeout(timeoutId);
++	}
+ }
+ function get$1(url, opts) {
+ 	return fetch$1(url, opts).then((res) => res.text());

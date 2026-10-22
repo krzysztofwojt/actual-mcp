@@ -53,13 +53,15 @@ export async function handler(args: CreateTransactionArgs): Promise<CallToolResu
       transactionData.payee = transferPayeeId;
     }
 
+    const hasSplitTransfer = transactionData.subtransactions?.some((item) => item.transfer_account_id);
     resolveTransactionPayees(transactionData, payees);
 
     const id: string = await createTransaction(accountId, transactionData);
 
-    const message = transfer_account_id
-      ? `Successfully created transfer transaction ${id} (counterpart created in destination account)`
-      : `Successfully created transaction ${id}`;
+    const message =
+      transfer_account_id || hasSplitTransfer
+        ? `Successfully created transfer transaction ${id} (counterpart created in destination account)`
+        : `Successfully created transaction ${id}`;
 
     return successWithJson(message);
   } catch (err) {

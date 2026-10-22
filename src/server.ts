@@ -18,7 +18,7 @@ export function createServer(options: CreateServerOptions): Server {
   const server = new Server(
     {
       name: 'Actual Budget',
-      version: '1.12.1-kwojt.5',
+      version: '1.12.1-kwojt.4',
     },
     {
       capabilities: {

@@ -12,7 +12,7 @@ import { toJSONSchema } from 'zod';
 export const schema = {
   name: 'balance-history',
   description: 'Get account balance history over time',
-  inputSchema: toJSONSchema(BalanceHistoryArgsSchema) as ToolInput,
+  inputSchema: toJSONSchema(BalanceHistoryArgsSchema, { io: 'input' }) as ToolInput,
 };
 
 export async function handler(args: BalanceHistoryArgs): Promise<CallToolResult> {
@@ -22,8 +22,7 @@ export async function handler(args: BalanceHistoryArgs): Promise<CallToolResult>
 
     // Calculate date range
     const endDate = new Date();
-    const startDate = new Date();
-    startDate.setMonth(endDate.getMonth() - months);
+    const startDate = new Date(endDate.getFullYear(), endDate.getMonth() - months + 1, 1);
     const start = formatDate(startDate);
     const end = formatDate(endDate);
 
@@ -32,7 +31,8 @@ export async function handler(args: BalanceHistoryArgs): Promise<CallToolResult>
       accountId,
       includeOffBudget,
       start,
-      end
+      end,
+      endDate
     );
 
     // Calculate balance history

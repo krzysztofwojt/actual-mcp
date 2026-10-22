@@ -9,3 +9,5 @@ data/**
 .gemini/
 
 **/*.local.*
+
+.upgrade-tmp/

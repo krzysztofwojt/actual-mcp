@@ -1,11 +1,11 @@
 import { fetchAllAccounts } from '../../core/data/fetch-accounts.js';
-import { fetchAllCategories } from '../../core/data/fetch-categories.js';
+import { fetchAllCategories, fetchAllCategoryGroups } from '../../core/data/fetch-categories.js';
 import { fetchTransactionsForAccount, fetchAllOnBudgetTransactions } from '../../core/data/fetch-transactions.js';
-import type { Account, Category, Transaction } from '../../core/types/domain.js';
+import type { Account, Category, CategoryGroup, Transaction } from '../../core/types/domain.js';
 
 export class MonthlySummaryDataFetcher {
   /**
-   * Fetch accounts, categories, and all transactions for the given period.
+   * Fetch accounts, categories, groups, and all transactions for the given period.
    * If accountId is provided, only fetch transactions for that account.
    */
   async fetchAll(
@@ -15,6 +15,7 @@ export class MonthlySummaryDataFetcher {
   ): Promise<{
     accounts: Account[];
     categories: Category[];
+    categoryGroups: CategoryGroup[];
     transactions: Transaction[];
   }> {
     const accounts = await fetchAllAccounts();
@@ -23,6 +24,7 @@ export class MonthlySummaryDataFetcher {
       throw new Error(`ACCOUNT_NOT_FOUND: ${accountId}`);
     }
     const categories = await fetchAllCategories();
+    const categoryGroups = await fetchAllCategoryGroups();
 
     let transactions: Transaction[] = [];
     if (account) {
@@ -31,6 +33,6 @@ export class MonthlySummaryDataFetcher {
       transactions = await fetchAllOnBudgetTransactions(accounts, start, end);
     }
 
-    return { accounts, categories, transactions };
+    return { accounts, categories, categoryGroups, transactions };
   }
 }

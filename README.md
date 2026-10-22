@@ -45,10 +45,46 @@ Actual stores a posted schedule occurrence directly on the transaction in the na
 
 When `update-schedule.resetNextDate` is omitted, the next occurrence is recalculated only if the schedule date or recurrence changes. An explicit boolean overrides that behavior.
 
+Transaction updates preserve the source transaction ID and use Actual's native transfer engine.
+Readback verifies transfers in both directions: normal-to-transfer requires a reciprocal counterpart,
+and transfer-to-normal requires removal of the old standalone counterpart. Actual detaches a counterpart
+that belongs to another split in place; readback checks that its transfer link and payee are cleared.
+An empty grouped `subtransactions` array is treated as a standalone transaction.
+Readback matches children by supplied ID or by their requested fields, independently of native sort order,
+and checks reciprocal links and amounts for transfer counterparts. Readback accepts native category clearing
+for off-budget source accounts and transfers between accounts of the same budget type. `get-transactions` includes split child details.
+A `TRANSACTION_UPDATE_READBACK_MISMATCH` after a write includes JSON with `writeAttempted`,
+`rollbackPerformed`, `state`, `retrySafe`, `before`, `observed`, `counterparts`, and `counterpartStates`.
+`counterpartStates` includes checked counterpart IDs and their observed records, or `null` when no active record exists.
+Amounts in these snapshots use Actual's integer minor units. `state: "unknown"` means readback failed;
+otherwise the snapshots describe the observed state after the write. No automatic rollback is performed.
+Do not blindly retry: first inspect the reported state and read the transaction again.
+Invalid split totals are rejected before writing.
+
 #### Reporting & Analytics
 
 - **`spending-by-category`** - Generate spending breakdowns categorized by type. Omitted date bounds are unrestricted; income is excluded unless `includeIncome` is true.
 - **`monthly-summary`** - Get monthly income, expenses, and savings metrics. `months` is a positive integer and defaults to 3.
+- **`budget-vs-actual`** - Compare budgeted amounts against actual spending per category
+- **`net-worth`** - Track assets, liabilities, and net worth across all accounts over time
+- **`category-trends`** - See how spending in each category moves month over month, with trend direction
+- **`spending-by-payee`** - Rank payees by how much was spent with (or received from) each one
+- **`cash-flow`** - Report income, expenses, and net cash flow per month or week
+
+> The five tools above return JSON rather than markdown, so amounts stay machine-readable. Every amount is an integer number of cents, and each response carries an `amountsIn` field describing the sign conventions it uses.
+
+#### Custom Reports & Dashboards
+
+- **`get-custom-reports`** - Retrieve every saved custom report from the Reports section
+- **`create-custom-report`** - Create a saved custom report
+- **`update-custom-report`** - Update fields on a saved custom report, leaving the rest unchanged
+- **`delete-custom-report`** - Delete a saved custom report
+- **`get-dashboards`** - Retrieve every dashboard page and the widgets laid out on it
+- **`add-dashboard-widget`** - Add a widget to a dashboard page
+- **`update-dashboard-widget`** - Update a widget's configuration, position, or size
+- **`remove-dashboard-widget`** - Remove a widget from its page
+- **`organize-dashboard`** - Reposition and resize several widgets at once
+- **`create-dashboard-page`** / **`rename-dashboard-page`** / **`delete-dashboard-page`** - Manage dashboard pages
 
 #### Categories
 
@@ -74,6 +110,36 @@ When `update-schedule.resetNextDate` is omitted, the next occurrence is recalcul
 - **`create-rule`** - Create a new transaction rule with conditions and actions
 - **`update-rule`** - Update an existing transaction rule
 - **`delete-rule`** - Delete a transaction rule
+
+Split amount actions use Actual's native `options.method`: `fixed-amount`,
+`fixed-percent`, `remainder`, or `formula`. Create and update accept the same shape;
+get-rules returns native actions without rewriting formulas. For example:
+
+```json
+{
+  "op": "set-split-amount",
+  "field": null,
+  "value": null,
+  "options": {
+    "splitIndex": 1,
+    "method": "formula",
+    "formula": "=INTEGER_TO_AMOUNT(parent_amount) * 0.5"
+  }
+}
+```
+
+Split indexes start at 1. A formula must start with `=` and contain an expression.
+Formula/remainder actions use `value: null` (legacy `0` is accepted); fixed amounts
+use integer cents and fixed percentages use a number from 0 to 100. Formulas
+return major currency units, which Actual converts to cents. Do not attach a
+formula to a fixed or remainder action. Conditions can inspect `notes`.
+
+Parent text variables (`parent_notes`, `parent_imported_payee`, `parent_payee`,
+`parent_account`) require the corresponding Actual rules-engine enhancement in
+**every client that executes rules**, including the API used by bank importers.
+MCP only passes the native formula through; it does not implement an evaluator,
+transaction watcher, or a processing database.
+
 
 #### Bank synchronization
 
@@ -157,6 +223,28 @@ If your Actual setup requires a different password to unlock the local/encrypted
 # If server auth and encryption/unlock use different passwords
 export ACTUAL_BUDGET_ENCRYPTION_PASSWORD="your-encryption-password"
 ```
+
+Optional: OpenID servers (session token auth)
+
+If your Actual server uses OpenID login (for example Google) with `ACTUAL_OPENID_ENFORCE=true`, password login is disabled, so `ACTUAL_PASSWORD` can't be used. Instead, sign in to Actual in a browser and pass the resulting session token. It takes precedence over `ACTUAL_PASSWORD`.
+
+```bash
+export ACTUAL_SERVER_URL="https://your-actual-server.com"
+export ACTUAL_SESSION_TOKEN="your-session-token"
+```
+
+To find the token, sign in to Actual in your browser, open DevTools, and go to **Application → IndexedDB → actual → asyncStorage**. The value of the `user-token` key is your session token. It's a UUID (e.g. `3f2b8c1e-9a4d-4e7b-8c2a-1d5e6f7a8b9c`), not a long JWT-style bearer token. You can check it with `curl -H "X-ACTUAL-TOKEN: <token>" https://your-actual-server.com/account/validate`, which should return `"validated": true`. Treat it like a password: it grants full access to your budgets. How long it stays valid depends on the server's `ACTUAL_TOKEN_EXPIRATION` setting. If it is invalid or expired, the MCP server still starts, but tool calls fail with `Authentication failed: invalid or expired session token`, because the server connects to Actual on the first request (`--test-resources` reports the error immediately). Sign in again, replace the token, and restart the MCP server.
+
+### Connection lifecycle
+
+The server keeps one shared Actual connection for its entire lifetime and serializes budget operations through it. Downloaded data is re-synced when it exceeds the `ACTUAL_SYNC_TTL_MS` freshness window. In both stdio and HTTP modes, SIGINT and SIGTERM drain in-flight work before the server shuts down. Actual is no longer initialized and shut down for each tool call.
+
+### Report semantics
+
+- Balances and balance histories are capped as of today; future-dated transactions are excluded, and the current-month balance-history row is partial.
+- Closed on-budget accounts remain included in historical reports; closed off-budget accounts stay excluded by default.
+- Monthly income follows Actual's income-group metadata. Refunds net against expenses, zero-activity months count in averages, and uncategorized transfer pairs are skipped.
+- The former Investments bucket is removed from monthly summaries.
 
 ## Usage with Claude Desktop
 
@@ -274,7 +362,14 @@ Once connected, you can ask Claude questions like:
 - "Show me my spending by category last month"
 - "How much did I spend on groceries in January?"
 - "What's my savings rate over the past 3 months?"
+- "Which categories am I overspending on this month?"
+- "How has my net worth changed over the past year?"
+- "Which payees do I spend the most with?"
+- "Is my grocery spending trending up or down?"
 - "Analyze my budget and suggest areas to improve"
+- "What custom reports do I have?"
+- "Add a net worth widget to my Spending Plan dashboard"
+- "Rearrange my dashboard so the cash flow card is full width at the top"
 
 ## Usage with Codex CLI
 
@@ -312,6 +407,20 @@ Since MCP servers communicate over stdio, debugging can be challenging. You can 
 npx @modelcontextprotocol/inspector node build/index.js
 ```
 
+### E2E validation gate
+
+The end-to-end test suite (`vitest.e2e.config.ts`) spins up a real Actual Budget server in a Docker container (via Testcontainers), seeds a budget, and drives it through a real MCP client over stdio to verify accounts, transactions, categories, payees, rules, and imports actually persist. It requires Docker to be running locally.
+
+In CI, the `e2e-test` job in `.github/workflows/pr-validation.yml` only runs on release-please PRs (branch prefix `release-please--`) or when a PR is given the `run-e2e` label — it does not run on every PR by default, since it needs Docker and takes longer than the standard checks.
+
+To run it locally:
+
+```bash
+npm run build && npm run test:e2e
+```
+
+Docker must be installed and running; the test suite pulls and starts the Actual server image automatically.
+
 ## Project Structure
 
 - `index.ts` - Main server implementation
@@ -319,11 +428,11 @@ npx @modelcontextprotocol/inspector node build/index.js
 - `prompts.ts` - Prompt templates for LLM interactions
 - `utils.ts` - Helper functions for date formatting and more
 
-## Fork Modifications
+## Registry & Discovery
 
-This public fork tracks upstream while using independent versions such as `1.12.1-kwojt.1` and images at `ghcr.io/krzysztofwojt/actual-mcp`.
+This public fork tracks upstream while using independent versions such as `1.15.1-kwojt.1` and images at `ghcr.io/krzysztofwojt/actual-mcp`.
 
-- Actual Server and `@actual-app/api` are pinned together; this release uses `26.8.1`.
+- Actual Server and `@actual-app/api` are pinned together; this release uses `26.10.0`.
 - Mutations use a durable idempotency ledger and structured audit logs retained for three months.
 - Exact ID or unique case-insensitive name resolution is supported; fuzzy write matching is intentionally rejected.
 - Bank synchronization is asynchronous and rejects concurrent runs.

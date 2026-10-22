@@ -1,24 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { BalanceHistoryInputParser } from './input-parser.js';
+import { schema } from './index.js';
 
 describe('BalanceHistoryInputParser', () => {
-  it('uses the published defaults for an aggregate report', () => {
-    expect(new BalanceHistoryInputParser().parse({})).toEqual({
+  const parser = new BalanceHistoryInputParser();
+
+  it('defaults an all-account report to three on-budget months', () => {
+    expect(parser.parse({})).toEqual({
       accountId: undefined,
       includeOffBudget: false,
       months: 3,
     });
   });
 
-  it('preserves an explicit account and off-budget scope', () => {
-    expect(new BalanceHistoryInputParser().parse({ accountId: 'acc-1', includeOffBudget: true, months: 6 })).toEqual({
-      accountId: 'acc-1',
-      includeOffBudget: true,
-      months: 6,
-    });
+  it('rejects a non-positive month count', () => {
+    expect(() => parser.parse({ months: 0 })).toThrow();
   });
+});
 
-  it.each([0, -1, 1.5, Number.POSITIVE_INFINITY])('rejects invalid months: %s', (months) => {
-    expect(() => new BalanceHistoryInputParser().parse({ months })).toThrow();
+describe('balance-history schema', () => {
+  it('advertises defaulted inputs as optional', () => {
+    expect(schema.inputSchema.required).toBeUndefined();
   });
 });

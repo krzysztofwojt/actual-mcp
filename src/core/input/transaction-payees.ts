@@ -5,6 +5,7 @@ import { parseMoney } from './money.js';
 type SubtransactionWithPayee = {
   amount: string;
   payee?: string;
+  transfer_account_id?: string;
 };
 
 type TransactionWithPayees<TSubtransaction extends SubtransactionWithPayee> = {
@@ -21,6 +22,14 @@ export function resolveTransactionPayees<TSubtransaction extends SubtransactionW
     transaction.payee = resolveEntity(transaction.payee, payees, (item) => item.name, 'payee').id;
   }
   for (const subtransaction of transaction.subtransactions ?? []) {
+    if (subtransaction.transfer_account_id) {
+      const destination = subtransaction.transfer_account_id;
+      const payee = payees.find((item) => item.transfer_acct === destination);
+      if (!payee)
+        throw new Error(`No transfer payee found for account ${destination}. Ensure the destination account exists.`);
+      subtransaction.payee = payee.id;
+      delete subtransaction.transfer_account_id;
+    }
     if (subtransaction.payee) {
       subtransaction.payee = resolveEntity(subtransaction.payee, payees, (item) => item.name, 'payee').id;
     }
@@ -28,7 +37,9 @@ export function resolveTransactionPayees<TSubtransaction extends SubtransactionW
 }
 
 export function hasPayeeReferences(transaction: TransactionWithPayees<SubtransactionWithPayee>): boolean {
-  return Boolean(transaction.payee || transaction.subtransactions?.some((item) => item.payee));
+  return Boolean(
+    transaction.payee || transaction.subtransactions?.some((item) => item.payee || item.transfer_account_id)
+  );
 }
 
 /** Reject invalid splits before Actual accepts them with an error marker visible only in the UI. */

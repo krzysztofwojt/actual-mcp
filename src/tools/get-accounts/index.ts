@@ -4,9 +4,9 @@
 
 import { successWithJson, errorFromCatch } from '../../utils/response.js';
 import { fetchAllAccounts } from '../../core/data/fetch-accounts.js';
+import { fetchAccountBalanceAsOf } from '../../core/data/fetch-account-balance.js';
 import type { Account } from '../../core/types/domain.js';
 import { formatAmount } from '../../utils.js';
-import { fetchCurrentAccountBalance } from '../../core/data/account-balance.js';
 import { z, toJSONSchema } from 'zod';
 import { type ToolInput } from '../../types.js';
 
@@ -24,7 +24,7 @@ export async function handler(): Promise<ReturnType<typeof successWithJson> | Re
     const accounts: Account[] = await fetchAllAccounts();
 
     for (const account of accounts) {
-      account.balance = await fetchCurrentAccountBalance(account.id);
+      account.balance = await fetchAccountBalanceAsOf(account.id);
     }
 
     const structured = accounts.map((account) => ({

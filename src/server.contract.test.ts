@@ -28,7 +28,7 @@ describe('MCP tool contract', () => {
   it('exposes only read tools when writes are disabled', async () => {
     const client = await connect(false);
     const { tools } = await client.listTools();
-    expect(tools).toHaveLength(13);
+    expect(tools).toHaveLength(21);
     expect(tools.map((tool) => tool.name)).toContain('get-budget-month');
     expect(tools.map((tool) => tool.name)).toContain('get-bank-sync-status');
     expect(tools.map((tool) => tool.name)).not.toContain('set-budget-amount');
@@ -39,7 +39,7 @@ describe('MCP tool contract', () => {
     const writeClient = await connect(true);
     const readNames = new Set((await readClient.listTools()).tools.map((tool) => tool.name));
     const tools = (await writeClient.listTools()).tools;
-    expect(tools).toHaveLength(53);
+    expect(tools).toHaveLength(71);
     expect(new Set(tools.map((tool) => tool.name)).size).toBe(tools.length);
     for (const tool of tools.filter((item) => !readNames.has(item.name))) {
       expect(tool.inputSchema.required, tool.name).toContain('operationId');
