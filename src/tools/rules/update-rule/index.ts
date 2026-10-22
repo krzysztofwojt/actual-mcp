@@ -19,7 +19,7 @@ export async function handler(
   args: Record<string, unknown>
 ): Promise<ReturnType<typeof successWithJson> | ReturnType<typeof errorFromCatch>> {
   try {
-    const input = UpdateRuleArgsSchema.parse(args);
+    const input = UpdateRuleArgsSchema.parse(normalizeRuleStage(args));
     await updateRule(normalizeRuleStage(input));
     const updated = (await getRules()).find((item) => item.id === input.id);
     if (!updated) throw new Error(`RULE_READBACK_MISSING: ${input.id}`);

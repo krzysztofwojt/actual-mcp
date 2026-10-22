@@ -7,7 +7,7 @@ import globals from 'globals';
 export default tseslint.config(
   // Global ignores
   {
-    ignores: ['node_modules', 'dist', 'build', 'coverage', '**/*.d.ts', 'eslint.config.*'],
+    ignores: ['.upgrade-tmp/**', 'node_modules', 'dist', 'build', 'coverage', '**/*.d.ts', 'eslint.config.*'],
   },
 
   // Base configurations

@@ -93,10 +93,6 @@ export const UpdateSubtransactionSchema = z.object({
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
   payee: z.string().optional().describe('Exact payee ID or unique case-insensitive payee name for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
-  payee: z
-    .string()
-    .optional()
-    .describe('An existing payee ID for this subtransaction. Overridden by transfer_account_id if both are given.'),
   transfer_account_id: z
     .string()
     .optional()
@@ -151,10 +147,6 @@ export const SubtransactionSchema = z.object({
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
   payee: z.string().optional().describe('Exact payee ID or unique case-insensitive payee name for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
-  payee: z
-    .string()
-    .optional()
-    .describe('An existing payee ID for this subtransaction. Overridden by transfer_account_id if both are given.'),
   transfer_account_id: z
     .string()
     .optional()
@@ -226,10 +218,6 @@ export const ImportSubtransactionSchema = z.object({
   category: z.string().optional().describe('The ID of the category for this subtransaction'),
   payee: z.string().optional().describe('Exact payee ID or unique case-insensitive payee name for this subtransaction'),
   notes: z.string().optional().describe('Any additional notes for this subtransaction'),
-  payee: z
-    .string()
-    .optional()
-    .describe('An existing payee ID for this subtransaction. Overridden by transfer_account_id if both are given.'),
   transfer_account_id: z
     .string()
     .optional()

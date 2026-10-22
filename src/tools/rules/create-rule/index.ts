@@ -20,7 +20,7 @@ export async function handler(
   args: Record<string, unknown>
 ): Promise<ReturnType<typeof successWithJson> | ReturnType<typeof errorFromCatch>> {
   try {
-    const input = CreateRuleArgsSchema.parse(args);
+    const input = CreateRuleArgsSchema.parse(normalizeRuleStage(args));
     const { id }: RuleEntity = await createRule(normalizeRuleStage(input));
     const created = (await getRules()).find((item) => item.id === id);
     if (!created) throw new Error(`RULE_READBACK_MISSING: ${id}`);

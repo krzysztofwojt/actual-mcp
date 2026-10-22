@@ -3,6 +3,7 @@ import { handler, schema } from './index.js';
 
 vi.mock('../../../actual-api.js', () => ({
   updateRule: vi.fn(),
+  getRules: vi.fn().mockResolvedValue([{ id: 'rule-1' }]),
 }));
 
 import { updateRule } from '../../../actual-api.js';

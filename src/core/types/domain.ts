@@ -20,9 +20,6 @@ export interface Transaction {
   category_name?: string;
   notes?: string;
   transfer_id?: string;
-  is_parent?: boolean;
-  parent_id?: string;
-  subtransactions?: Transaction[];
   schedule?: string;
   cleared?: boolean;
   // Reason: Actual returns split transactions as a parent with a nested `subtransactions`

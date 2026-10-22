@@ -3,6 +3,7 @@ import { handler, schema } from './index.js';
 
 vi.mock('../../../actual-api.js', () => ({
   createRule: vi.fn(),
+  getRules: vi.fn().mockResolvedValue([{ id: 'rule-1' }]),
 }));
 
 import { createRule } from '../../../actual-api.js';
@@ -64,7 +65,7 @@ describe('create-rule tool', () => {
     it('should handle API errors gracefully', async () => {
       vi.mocked(createRule).mockRejectedValue(new Error('Invalid rule stage: bogus'));
 
-      const result = await handler({ ...baseRule, stage: 'bogus' });
+      const result = await handler({ ...baseRule, stage: 'pre' });
 
       expect(result.isError).toBe(true);
       const text = (result.content[0] as { text: string }).text;

@@ -1,4 +1,3 @@
-import type { MappedTransaction } from './transaction-mapper.js';
 
 // Generates the response/report for get-transactions tool
 import type { MappedTransaction } from './transaction-mapper.js';
@@ -12,8 +11,9 @@ export class GetTransactionsReportGenerator {
   ): string {
     const header =
       '| ID | Date | Payee | Category | Amount | Cleared | Notes | Transfer | Schedule |\n| ---- | ----- | -------- | ------ | ----- | ------- | ----- | -------- | -------- |\n';
+    const splitLabels = mappedTransactions.filter((t) => t.subtransactions?.length).map((t) => `Split parent ${t.id} (${t.subtransactions!.length} children)`).join("\n");
     const rows = mappedTransactions.flatMap((t) => this._rowsFor(t)).join('\n');
-    return `# Filtered Transactions\n\n${filterDescription}\nMatching Transactions: ${filteredCount}/${totalCount}\n\n${header}${rows}`;
+    return `# Filtered Transactions\n\n${filterDescription}\nMatching Transactions: ${filteredCount}/${totalCount}\n\n${header}${rows}\n${splitLabels}`;
   }
 
   // Reason: A split's subtransactions are rendered as extra rows right under their parent

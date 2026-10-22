@@ -6,7 +6,6 @@ vi.mock('@actual-app/api', () => ({
   downloadBudget: vi.fn(),
   sync: vi.fn(),
   shutdown: vi.fn(),
-  getAccounts: vi.fn(),
   getTransactions: vi.fn(),
   getPayees: vi.fn().mockResolvedValue([]),
   getAccounts: vi.fn().mockResolvedValue([]),

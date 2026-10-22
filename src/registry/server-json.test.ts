@@ -25,7 +25,7 @@ const pkg = JSON.parse(readFileSync(`${root}package.json`, 'utf8')) as {
 
 describe('server.json', () => {
   it('name matches package.json mcpName exactly', () => {
-    expect(serverJson.name).toBe('io.github.s-stefanov/actual-mcp');
+    expect(serverJson.name).toBe('io.github.krzysztofwojt/actual-mcp');
     expect(pkg.mcpName).toBe(serverJson.name);
   });
 
@@ -46,7 +46,7 @@ describe('server.json', () => {
 
   it('advertises both stdio and streamable-http on the npm package', () => {
     const npmPkgs = serverJson.packages.filter((p: ServerPackage) => p.registryType === 'npm');
-    expect(npmPkgs.every((p: ServerPackage) => p.identifier === 'actual-mcp')).toBe(true);
+    expect(npmPkgs.every((p: ServerPackage) => p.identifier === '@krzysztofwojt/actual-mcp')).toBe(true);
     const stdio = npmPkgs.find((p: ServerPackage) => p.transport.type === 'stdio');
     const http = npmPkgs.find((p: ServerPackage) => p.transport.type === 'streamable-http');
     expect(stdio).toBeDefined();
