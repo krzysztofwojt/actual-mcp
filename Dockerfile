@@ -7,6 +7,7 @@ WORKDIR /app
 RUN apk add --no-cache python3 make g++
 
 COPY package.json package-lock.json ./
+COPY patches ./patches
 RUN --mount=type=cache,target=/root/.npm npm ci
 
 COPY . ./
@@ -28,7 +29,6 @@ COPY --from=builder /app/build ./build
 ENV NODE_ENV=production
 ENV TMPDIR=/tmp
 
-RUN --mount=type=cache,target=/root/.npm npm ci --omit=dev
 
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \

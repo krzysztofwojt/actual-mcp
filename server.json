@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.s-stefanov/actual-mcp",
+  "name": "io.github.krzysztofwojt/actual-mcp",
   "title": "Actual Budget MCP Server",
   "description": "MCP server exposing Actual Budget accounts, transactions, budgets and reporting to LLM assistants.",
-  "version": "1.15.1",
+  "version": "1.15.1-kwojt.1",
   "websiteUrl": "https://github.com/s-stefanov/actual-mcp",
   "repository": {
     "url": "https://github.com/s-stefanov/actual-mcp",
@@ -13,8 +13,8 @@
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "actual-mcp",
-      "version": "1.15.1",
+      "identifier": "@krzysztofwojt/actual-mcp",
+      "version": "1.15.1-kwojt.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
@@ -55,8 +55,8 @@
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
-      "identifier": "actual-mcp",
-      "version": "1.15.1",
+      "identifier": "@krzysztofwojt/actual-mcp",
+      "version": "1.15.1-kwojt.1",
       "runtimeHint": "npx",
       "transport": {
         "type": "streamable-http",
