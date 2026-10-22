@@ -3,7 +3,8 @@ import * as api from '@actual-app/api';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { retryNetwork } from './reliability.js';
+import { configureActualHttp, closeActualHttp } from './actual-http.js';
+import { retryActualOperation } from './reliability.js';
 import { BudgetFile } from '../../types.js';
 
 const DEFAULT_DATA_DIR: string = path.resolve(os.homedir() || '.', '.actual');
@@ -69,8 +70,8 @@ export class ActualConnection {
     try {
       if (ready) fs.writeFileSync(marker, new Date().toISOString());
       else fs.rmSync(marker, { force: true });
-    } catch (error) {
-      console.error('Could not update readiness marker:', error);
+    } catch {
+      console.error('Could not update readiness marker');
     }
   }
 
@@ -177,7 +178,7 @@ export class ActualConnection {
   private performSync(): Promise<void> {
     if (this.inflightSync) return this.inflightSync;
     this.inflightSync = this.enqueue(() =>
-      retryNetwork(async () => {
+      retryActualOperation('sync', async () => {
         try {
           await api.sync();
         } catch (error) {
@@ -213,10 +214,11 @@ export class ActualConnection {
       if (this.apiOpened) {
         try {
           await api.shutdown();
-        } catch (err) {
-          console.error('Error shutting down Actual Budget API:', err);
+        } catch {
+          console.error('Error shutting down Actual Budget API');
         }
       }
+      await closeActualHttp();
       this.state = 'closed';
       this.setReady(false);
       this.lastSyncAt = 0;
@@ -240,7 +242,11 @@ export class ActualConnection {
     this.apiOpened = true;
     const initConfig = buildInitConfig(dataDir);
     try {
-      this.actualLib = await api.init(initConfig);
+      configureActualHttp();
+      this.actualLib = await retryActualOperation('login', async (attempt) => {
+        if (attempt > 1) await api.shutdown();
+        return api.init(initConfig);
+      });
       const budgets: BudgetFile[] = await api.getBudgets();
       if ((!budgets || budgets.length === 0) && !process.env.ACTUAL_BUDGET_SYNC_ID?.trim()) {
         throw new Error('No budgets found. Please create a budget in Actual first.');
@@ -251,21 +257,18 @@ export class ActualConnection {
         throw new Error('ACTUAL_BUDGET_SYNC_ID_REQUIRED: multiple budgets are available');
       const budgetId = configuredId || budgets[0]?.cloudFileId || budgets[0]?.id;
       if (!budgetId) throw new Error('ACTUAL_BUDGET_ID_MISSING');
-      console.error(`Loading budget: ${budgetId}`);
-      await retryNetwork(
-        () =>
-          api.downloadBudget(
-            budgetId,
-            process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD
-              ? { password: process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD }
-              : undefined
-          ),
-        async () => {
+      await retryActualOperation('download', async (attempt) => {
+        if (attempt > 1) {
           await api.shutdown();
           this.actualLib = await api.init(initConfig);
-        },
-        750
-      );
+        }
+        await api.downloadBudget(
+          budgetId,
+          process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD
+            ? { password: process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD }
+            : undefined
+        );
+      });
 
       // Reason: seed lastSyncAt so the first call after init does not immediately sync.
       this.lastSyncAt = Date.now();
@@ -281,9 +284,10 @@ export class ActualConnection {
         await api.shutdown();
         this.apiOpened = false;
         this.actualLib = null;
-      } catch (shutdownErr) {
-        console.error('Error shutting down Actual Budget API after failed init:', shutdownErr);
+      } catch {
+        console.error('Error shutting down Actual Budget API after failed init');
       }
+      await closeActualHttp();
       throw err;
     }
     console.error('Actual Budget API initialized successfully');

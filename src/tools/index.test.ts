@@ -66,6 +66,28 @@ describe('setupTools', () => {
     ]);
   });
 
+  it('requires operation IDs for every registered mutation including 1.15.x tools', () => {
+    const readNames = new Set(listTools(false).tools.map((tool) => tool.name));
+    const writes = listTools(true).tools.filter((tool) => !readNames.has(tool.name));
+    expect(writes.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        'create-transaction',
+        'import-transactions',
+        'run-bank-sync',
+        'merge-payees',
+        'close-account',
+        'reconcile-account',
+        'match-transaction-to-schedule',
+        'unmatch-transaction-from-schedule',
+        'create-custom-report',
+        'organize-dashboard',
+      ])
+    );
+    for (const tool of writes) {
+      expect((tool.inputSchema as { required: string[] }).required, tool.name).toContain('operationId');
+    }
+  });
+
   it('gives every tool a unique name, a description, and an object input schema', () => {
     const tools = listTools(true).tools;
 

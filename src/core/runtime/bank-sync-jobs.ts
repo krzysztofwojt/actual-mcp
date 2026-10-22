@@ -94,8 +94,10 @@ export function startBankSyncJob(scope: BankSyncScope): BankSyncJob {
       tool: 'bank-sync-execution',
       status: 'running',
     });
+    let mutationStarted = false;
     try {
       await syncActual();
+      mutationStarted = true;
       await runBankSync(scope === 'all' ? undefined : scope);
       await syncActual();
       const completed: BankSyncJob = { ...running, status: 'completed', completedAt: new Date().toISOString() };
@@ -107,12 +109,14 @@ export function startBankSyncJob(scope: BankSyncScope): BankSyncJob {
         tool: 'bank-sync-execution',
         status: 'completed',
       });
-    } catch (error) {
+    } catch {
       const failed: BankSyncJob = {
         ...running,
         status: 'failed',
         completedAt: new Date().toISOString(),
-        error: error instanceof Error ? error.message : String(error),
+        error: mutationStarted
+          ? 'MUTATION_OUTCOME_UNCERTAIN: bank sync was not automatically retried. Reconcile the budget before resubmitting.'
+          : 'BANK_SYNC_PREPARATION_FAILED',
       };
       replaceJob(failed);
       activeJobIds.delete(job.id);

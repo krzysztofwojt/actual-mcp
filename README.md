@@ -239,6 +239,52 @@ To find the token, sign in to Actual in your browser, open DevTools, and go to *
 
 The server keeps one shared Actual connection for its entire lifetime and serializes budget operations through it. Downloaded data is re-synced when it exceeds the `ACTUAL_SYNC_TTL_MS` freshness window. In both stdio and HTTP modes, SIGINT and SIGTERM drain in-flight work before the server shuts down. Actual is no longer initialized and shut down for each tool call.
 
+### Actual HTTP transport and safe retries
+
+An origin-scoped Undici dispatcher is installed before SDK initialization. It also
+handles the built-in `fetch` cached by the SDK; other origins retain their previous
+dispatcher. Both `keepAliveTimeout` and `keepAliveMaxTimeout` default to 2000 ms,
+below Actual's 5-second idle timeout. Server hints have a 1000 ms safety threshold.
+Use a lower cap if your server closes idle sockets sooner.
+
+| Environment variable | Default | Valid values / meaning |
+| --- | --- | --- |
+| `ACTUAL_HTTP_KEEPALIVE_TIMEOUT_MS` | `2000` | Integer 1–4000; idle connection cap, including server hints |
+| `ACTUAL_HTTP_REQUEST_TIMEOUT_MS` | `15000` | Integer 1–300000; response headers and body inactivity |
+| `ACTUAL_SYNC_REQUEST_TIMEOUT_MS` | `15000` | Positive finite number; whole binary sync request, including body |
+| `ACTUAL_HTTP_RETRY_ATTEMPTS` | `3` | Integer 1–5; total attempts, including the first |
+| `ACTUAL_HTTP_RETRY_DELAY_MS` | `500` | Integer 1–10000; multiplied by the failed attempt number |
+
+Invalid values use the defaults. `ACTUAL_SYNC_TTL_MS` still controls freshness.
+Ordinary HTTP timeouts are inactivity limits, so a steadily streaming download
+has no whole-operation deadline.
+
+Only login/SDK initialization, budget download, and CRDT synchronization retry
+known transport failures. Each retry gets its own fresh Agent, closed afterwards.
+CRDT retries resend persisted timestamps, allowing the server to deduplicate the
+same messages. Authentication, TLS, rate-limit, validation and cancellation errors
+are terminal. HTTP background warmup waits 15 seconds between exhausted transient
+initialization cycles and stops on terminal failures or shutdown.
+
+Financial handlers are never automatically replayed, including imports, transfers,
+bank sync, payee merges, accounts, schedules, metadata, reports and dashboards.
+An error after entering a write handler returns `MUTATION_OUTCOME_UNCERTAIN`;
+reconcile the budget before submitting it again. A failure of the pre-write sync
+does not enter the handler. Background bank jobs use the same uncertainty policy.
+Only successful operations are stored in the existing idempotency ledger.
+
+Each failed safe attempt emits one JSON log line with the operation, attempt/limit,
+known error code, fresh-connection flag, elapsed time and retry decision. Recovery
+emits a summary. These diagnostics omit URLs, arguments, credentials and stacks;
+detailed downstream SDK request/error logging is suppressed.
+
+The single `patches/@actual-app+api+26.10.0.patch` preserves the binary sync deadline
+and redacts SDK logging. `patch-package` is a production dependency and
+`postinstall` runs `patch-package --error-on-fail` for both `npm ci` and
+`npm ci --omit=dev`. Do not skip installation scripts. Regenerate the patch with
+`npx patch-package @actual-app/api` after reviewing any SDK upgrade; do not copy the
+old 26.9.0 patch. Official 26.10.0 already includes the `parent_*` fixes.
+
 ### Report semantics
 
 - Balances and balance histories are capped as of today; future-dated transactions are excluded, and the current-month balance-history row is partial.

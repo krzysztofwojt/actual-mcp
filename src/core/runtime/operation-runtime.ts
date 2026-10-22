@@ -114,8 +114,10 @@ export async function executeMutation(request: MutationRequest): Promise<CallToo
     args: request.args,
   });
 
+  let mutationStarted = false;
   try {
     await syncActual();
+    mutationStarted = true;
     const result = await request.mutate();
     if (result.isError)
       throw new Error(result.content[0]?.type === 'text' ? result.content[0].text : 'Mutation failed');
@@ -144,6 +146,12 @@ export async function executeMutation(request: MutationRequest): Promise<CallToo
       status: 'failed',
       error: error instanceof Error ? error.message : String(error),
     });
+    if (mutationStarted) {
+      throw new Error(
+        'MUTATION_OUTCOME_UNCERTAIN: the write was not automatically retried. Reconcile the budget before resubmitting.',
+        { cause: error }
+      );
+    }
     throw error;
   }
 }

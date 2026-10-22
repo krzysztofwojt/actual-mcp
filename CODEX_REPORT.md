@@ -100,3 +100,158 @@ Ignored logs: `.upgrade-tmp/ci.log`, `final-build.log`, `final-tests.log`, `fina
 - Readiness marker and /healthz now track initialized/fresh connection state. Resources return no financial data on refresh failure (list handler keeps its existing empty-list error response); clients should inspect readiness/logs rather than equate an empty list with a new empty budget.
 - Upgrade playbook explicitly warns that SDK/server schema mismatches can cause invalid-schema/missing-table errors. 26.10 improves cross-version sync but can defer newer data; matching versions remain required for this deployment policy. Its older Tailscale /sse route/port instructions conflict with its later July note naming /mcp; verify real deployment configuration when separately authorized.
 - Runtime marker I/O is best-effort; health readiness is in memory. Warmup/health and native Docker dependencies need an image smoke test. Existing upstream process-level exception handlers keep the process alive; they do not prove recovery from arbitrary fatal native/storage faults.
+
+
+## actual-conn-v2
+
+Data: 2026-10-22. Worktree: `actual-conn-v2`, gałąź `codex/actual-conn-v2`,
+baza `601ba68` (main, 1.15.1-kwojt.1, API/core 26.10.0).
+Powyższa treść raportu #1 jest zachowana; ta sekcja aktualizuje opis transportu,
+retry, logowania i wyników dla nowej gałęzi. Wyłącznie lokalne testy i commity;
+bez push, wdrożenia, połączeń z NAS/produkcją ani pozyskiwania credentiali.
+Nie uruchamiano agentów pomocniczych. Nie czytano keychaina, ~/.ssh, menedżerów
+haseł, profili przeglądarek ani plików innych projektów.
+
+### Przeniesione zmiany i różnice względem źródła
+
+Źródło sprawdzono przez `git show` trzech wskazanych commitów oraz ich plików.
+`a0b8121` nie został przeniesiony: main zawiera już jego odpowiedniki z #1.
+`d080618` służył jedynie jako kontekst raportu; nie kopiowano jego treści.
+
+| Źródło | Przeniesienie / adaptacja |
+| --- | --- |
+| `28fc4b5` | `3c734eb`: Undici 7.30.1, dispatcher tylko dla originu ACTUAL_SERVER_URL, limit obu keep-alive, timeout nagłówków/body. Instalacja przed init SDK i zamykanie w cyklu życia ActualConnection, także po nieudanym init. Zachowane sessionToken/password, kolejka, single-flight i graceful drain z main. |
+| `ec09ede` | `a41c3dc`: ścisła klasyfikacja kodów i jedna pętla retry w istniejącym reliability.ts; zastąpiono szeroki regex oraz poprzednie pętle sync/download, dodano login. Świeży Agent przez AsyncLocalStorage dla każdej ponownej próby. Reset SDK dla login/download jest wewnątrz tej próby, bez zagnieżdżonego retry. |
+| `ec09ede` | Runtime oznacza błędy po wejściu do handlera jako MUTATION_OUTCOME_UNCERTAIN. Mutacja nie jest powtarzana; retry może objąć jedynie pre/post sync CRDT. Objęto też osobne wykonanie bank sync w tle, którego nie zabezpiecza sam runtime zgłoszenia zadania. |
+| `d39f297` | `bc31666`: redakcja SDK i usunięcie powielonych logów aplikacji, testy wykonywanego kodu SDK i warmup. Jedna łatka wygenerowana patch-package względem czystego API 26.10.0. Main już miał produkcyjne patch-package, postinstall --error-on-fail, atrybuty patch i poprawny Docker builder; nie cofano tych zmian. |
+| Dodatkowe dopasowanie | `a31a056`: po zakończeniu próby usuwa się z odziedziczonego scope referencję do zamykanego Agenta, aby przyszłe timery SDK używały zwykłej puli. Osobny lokalny test regresji. |
+
+Timeout binarnego sync z main jest zachowany. Wszystkie trzy klastry parent-context
+z łatki 26.9.0 sprawdzono w zainstalowanym 26.10.0: literały parent_ w formułach,
+parent_notes/imported_payee/payee/account przy split oraz usuwanie pól pomocniczych
+z rodzica/dzieci już są upstream. Nie dodano ich ponownie ani pliku patch 26.9.0.
+Pozostaje tylko `patches/@actual-app+api+26.10.0.patch`.
+
+Redakcja jest silniejsza od oryginału: usunięto dodatkowy ogólny log odrzucenia
+post/del/patch i wszystkie dwa logi stosów fullSync, także dla błędów terminalnych.
+Jedna warstwa retry emituje jedną linię JSON na nieudaną próbę, z operacją,
+próbą/limitem, kodem, freshConnection, elapsedMs i decyzją retry; po odzyskaniu
+emituje podsumowanie. Bez URL, argumentów, credentiali i stacków. Istniejący lokalny
+audyt operacji i ledger nadal mają swoją odrębną funkcję i format.
+Nie dołączono surowej wiadomości błędu do MUTATION_OUTCOME_UNCERTAIN (oryginalny
+d39f297 ją dopisywał), aby nie ujawniać danych finansowych/odpowiedzi SDK.
+
+Sprawdzono rejestr narzędzi main: create/update/delete transakcji, import,
+transfery i split transfers, kategorie/grupy/payees/rules, merge-payees,
+run-bank-sync, konta (w tym close z transferem i reconcile), budżet, tagi/notatki,
+schedules oraz match/unmatch transaction-to-schedule, custom reports i dashboardy.
+Wszystkie zapisy rejestru wymagają operationId i przechodzą przez executeMutation;
+dodano test tej właściwości, także dla narzędzi 1.15.x. Wrapper run() nie ponawia
+callbacków. Istniejące pętle weryfikacji transakcji/schedule odpytują readback po
+jednym zapisie; nie powtarzają mutacji. Bank job nie ponawia runBankSync.
+
+HTTP warmup zachowuje interwał 15 s między wyczerpanymi cyklami przejściowych
+błędów inicjalizacji. Zatrzymuje się na błędach terminalnych i respektuje shutdown
+z main. Nie jest dodatkową pętlą retry pojedynczego sync/download ani mutacji.
+
+### Konfiguracja
+
+README opisuje wszystkie limity. Wartości domyślne:
+`ACTUAL_HTTP_KEEPALIVE_TIMEOUT_MS=2000` (integer 1–4000),
+`ACTUAL_HTTP_REQUEST_TIMEOUT_MS=15000` (integer 1–300000),
+`ACTUAL_SYNC_REQUEST_TIMEOUT_MS=15000` (dodatnia skończona liczba, zgodnie z main),
+`ACTUAL_HTTP_RETRY_ATTEMPTS=3` (integer 1–5, razem z pierwszą próbą),
+`ACTUAL_HTTP_RETRY_DELAY_MS=500` (integer 1–10000, mnożnik numeru nieudanej próby).
+Błędne wartości zastępuje się domyślnymi. Download używa teraz wspólnego delay
+500/1000 ms zamiast dawnego 750/1500 ms. ACTUAL_SYNC_TTL_MS pozostaje bez zmian.
+
+### Weryfikacja lokalna
+
+Kontrole wykonano osobno po instalacji dla każdego runtime, aby nie mieszać ABI
+modułów natywnych. Node 24 uruchamiano przez
+`npm exec --yes --package=node@24.21.0 -- sh -c '…'`. Cache npm i nagłówki node-gyp
+przy kolejnych instalacjach skierowano do `/private/tmp/actual-conn-v2-*`.
+
+| Kontrola | Node 24.21.0 | Domyślny Node 26.3.1 |
+| --- | --- | --- |
+| npm ci | PASS; postinstall nałożył łatkę 26.10.0 | PASS; postinstall nałożył łatkę 26.10.0 |
+| npm ci --omit=dev | PASS; produkcyjne patch-package nałożyło łatkę | PASS; produkcyjne patch-package nałożyło łatkę |
+| npm run build | PASS | PASS |
+| npm test | PASS: 103 pliki, 596 testów | PASS: 103 pliki, 596 testów |
+| npm run type-check | PASS | PASS |
+| npm run lint | PASS | PASS |
+| git diff --check | PASS | PASS |
+
+Testy obejmują: lokalny serwer 127.0.0.1 niszczący gniazdo przy reuse (baseline
+UND_ERR_SOCKET, krótki keep-alive OK), świeże gniazdo retry i powrót do zwykłej puli,
+fetch przechwycony przez prawdziwe SDK, odzyskanie loginu, timeout nagłówków i
+binarnego body, limity prób i brak retry auth/TLS/rate-limit/cancel/nieznanych
+wiadomości. Test utraty odpowiedzi po przyjęciu zapisu potwierdza dokładnie jeden
+zapis. Są też testy awarii przed mutacją, po mutacji i wewnątrz bank job.
+
+Dowód CRDT składa się z wykonania zainstalowanego sendera 26.10.0 w VM (ten sam
+payload i timestamp po awarii) oraz testu SQLite: timestamp PRIMARY KEY i INSERT
+OR IGNORE odrzucają powtórkę. SQL pochodzi z testu ec09ede, referującego serwer
+26.9.0. Jest to dowód mechanizmu pod warunkiem zachowania tych semantyk na serwerze,
+nie test działającego serwera 26.10.0. Nie pobierano ani nie sprawdzano produkcji.
+
+Testy Docker/testcontainers (`npm run test:e2e`) i budowę kontenera pominięto.
+Nie uruchamiano Dockera, prawdziwego bank sync ani połączenia z rzeczywistym Actual.
+Końcowe node_modules i build pozostawiono dla domyślnego Node 26.3.1.
+Logi kontroli znajdują się w `/private/tmp/actual-v2-*.log` i nie są commitowane.
+Instalacja Node 26 zgłasza nieudaną kompilację opcjonalnego sshcrypto (testcontainers/
+ssh2, zmienione API V8); instalacja kończy się kodem 0 i fallbackiem. Nie dotyczy
+transportu Actual. npm ostrzega też o allow-scripts i nieznanym env config devdir;
+postinstall faktycznie się wykonał. Nie zmieniano pobocznych zależności.
+
+### Ryzyka, późniejsze wdrożenie i rollback
+
+- Lokalny test potwierdza wyścig przy reuse i sposób odzyskania; nie dowodzi,
+  że to jedyna przyczyna wcześniejszych awarii produkcyjnych.
+- Świeże pule i krótki keep-alive zwiększą liczbę połączeń. Trzy próby oraz
+  backoff ograniczają serię; rate limit jest terminalny.
+- Timeout HTTP dotyczy nagłówków i bezczynności body; aktywnie przesyłany download
+  nie ma całkowitego deadline. Binarny sync ma osobny deadline obejmujący body.
+  Duży budżet może wymagać większych limitów niż domyślne 15 s.
+- SDK patch jest związany z dokładnym bundle 26.10.0; upgrade wymaga regeneracji
+  i testów. Source map nie jest regenerowana. --ignore-scripts omija zabezpieczenia.
+- MUTATION_OUTCOME_UNCERTAIN wymaga uzgodnienia stanu przed ponownym zgłoszeniem.
+  Nie dodano automatycznego rollbacku ani trwałego dedupe nieudanych operacji;
+  istniejący ledger zapisuje tylko sukcesy. Walidacja po wejściu do handlera też
+  konserwatywnie dostaje ten kod. Background bank jobs mają taki sam status błędu.
+- Dopiero po osobnej autoryzacji: zachować poprzedni obraz, env i backup danych;
+  zbudować oznaczony obraz dla architektury docelowej standardowym Dockerfile,
+  wykonać Docker E2E z budżetem jednorazowym i sprawdzić zgodność server/API 26.10.0.
+  Następnie sprawdzić readiness, odczyt MCP, liczbę retry, redakcję logów i brak
+  duplikatów. Nie nadpisywać bundle starymi overlayami 26.9.0.
+- Rollback: przywrócić poprzedni obraz (bazę main 601ba68) oraz poprzednie env,
+  zachowując dane i ledger/audyt. Nie usuwać katalogu budżetu i nie odwracać
+  ręcznie fragmentów łatki w działającym kontenerze. Brak nowych migracji danych.
+
+
+### Poprawki 22.10 wieczór
+
+- Nieznany lub wygasły `Mcp-Session-Id` na `/` i `/mcp` zwraca HTTP 404
+  z JSON-RPC `-32001`, `Session not found`, również dla initialize ze starym ID.
+  Dotyczy POST/GET/DELETE; bearer auth nadal poprzedza sprawdzanie sesji (401).
+  Brak ID dla nie-initialize nadal daje 400; dotychczasowy fallback legacy SSE
+  dla GET bez ID z `Accept: text/event-stream` pozostaje zachowany.
+- Dodano 22 lokalne testy HTTP obu adresów: nieznana sesja, pierwszeństwo auth,
+  brak ID, initialize bez ID, poprawna sesja dla POST/GET/DELETE i wygaśnięcie po DELETE.
+  API Actual, warmup i dotenv są mockowane; listener używa wyłącznie loopback.
+- `serverInfo.version` jest czytane z `package.json` względem `import.meta.url`.
+  Test initialize porównuje faktycznie reklamowaną wersję z pakietem.
+  Odczyt działa z `src/` i `build/`; Dockerfile już kopiuje `package.json`
+  do `/app`, więc nie wymagał zmiany. Lokalny handshake przez InMemoryTransport
+  z `build/server.js` potwierdził `1.15.1-kwojt.2` bez połączeń z Actual.
+- Podbito `package.json`, oba wpisy wersji pakietu w `package-lock.json`
+  i wszystkie trzy pola wersji `server.json` do `1.15.1-kwojt.2`.
+  Po usunięciu starego literału z `src/server.ts` wyszukiwanie wersji w `src/`
+  nie wykazało dalszych literałów z zakresu 1.10–1.19; wersje rejestru pozostają
+  jawne i są kontrolowane istniejącym testem synchronizacji.
+- Node 26.3.1 oraz Node 24.21.0 przez `npm exec`: `npm run build`, `npm test`
+  (104 pliki, 619 testów), `npm run type-check`, `npm run lint` — wszystkie PASS.
+  Node 24 korzystał z istniejącego `node_modules`, bez reinstalacji.
+  Logi: `/private/tmp/actual-v2-evening-*.log`; `git diff --check` — PASS.
+- Zmiany zapisano w trzech osobnych commitach na `codex/actual-conn-v2`.
+  Bez pushowania, wdrożenia, połączeń z kiciserwerem lub usługami produkcyjnymi.

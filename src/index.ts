@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { warmActualApiUntilReady } from './integrations/actual/actual-warmup.js';
 /**
  * MCP Server for Actual Budget
  *
@@ -166,19 +167,6 @@ process.on('uncaughtException', (err) => {
   console.error(`Uncaught exception: ${toErrorMessage(err)}`);
 });
 
-/** Retry initial connection in the background after HTTP starts accepting requests. */
-async function warmActualApiUntilReady(): Promise<void> {
-  while (!shuttingDown) {
-    try {
-      await initActualApi();
-      return;
-    } catch (error) {
-      console.error(`Actual API warmup failed: ${toErrorMessage(error)}`);
-      await new Promise((resolve) => setTimeout(resolve, 15000));
-    }
-  }
-}
-
 // ----------------------------
 // SERVER STARTUP
 // ----------------------------
@@ -293,6 +281,15 @@ async function main(): Promise<void> {
       try {
         let session = sessionHeader ? streamableSessions.get(sessionHeader) : undefined;
 
+        if (sessionHeader && !session) {
+          res.status(404).json({
+            jsonrpc: '2.0',
+            error: { code: -32001, message: 'Session not found' },
+            id: null,
+          });
+          return;
+        }
+
         if (!session) {
           if (req.method === 'POST' && isInitializeRequest(req.body)) {
             const remoteAddress = req.ip ?? req.socket.remoteAddress ?? 'unknown';
@@ -380,7 +377,7 @@ async function main(): Promise<void> {
         process.stderr.write(`Error: ${toErrorMessage(error)}\n`);
       } else {
         process.stderr.write(`Actual Budget MCP Server (HTTP) listening on port ${resolvedPort}\n`);
-        void warmActualApiUntilReady();
+        void warmActualApiUntilReady(initActualApi, () => shuttingDown);
       }
     });
 
