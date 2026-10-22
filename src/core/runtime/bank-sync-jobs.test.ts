@@ -41,11 +41,26 @@ describe('bank sync jobs', () => {
     expect(syncActual).toHaveBeenCalledTimes(2);
   });
 
+  it('does not enter bank sync after a failed preparation', async () => {
+    vi.mocked(syncActual).mockRejectedValueOnce(new Error('offline'));
+    const failed = await waitForTerminal(startBankSyncJob('all').id);
+    expect(failed.error).toBe('BANK_SYNC_PREPARATION_FAILED');
+    expect(runBankSync).not.toHaveBeenCalled();
+  });
+
+  it('does not replay bank sync after failed post-write CRDT synchronization', async () => {
+    vi.mocked(syncActual).mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('offline'));
+    const failed = await waitForTerminal(startBankSyncJob('all').id);
+    expect(failed.error).toContain('MUTATION_OUTCOME_UNCERTAIN');
+    expect(runBankSync).toHaveBeenCalledTimes(1);
+  });
+
   it('persists failures without throwing from the background task', async () => {
     vi.mocked(runBankSync).mockRejectedValue(new Error('bank unavailable'));
     const queued = startBankSyncJob('all');
     const failed = await waitForTerminal(queued.id);
     expect(failed.status).toBe('failed');
-    expect(failed.error).toContain('bank unavailable');
+    expect(failed.error).toContain('MUTATION_OUTCOME_UNCERTAIN');
+    expect(runBankSync).toHaveBeenCalledTimes(1);
   });
 });

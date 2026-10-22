@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as api from '@actual-app/api';
 import { ActualConnection } from './connection.js';
-import { retryNetwork } from './reliability.js';
+import { retryActualOperation } from './reliability.js';
 
 vi.mock('@actual-app/api', () => ({
   init: vi.fn(),
@@ -63,9 +63,9 @@ describe('NAS reliability source ports', () => {
 
   it('retries sync transport failures three times with bounded backoff', async () => {
     vi.useFakeTimers();
-    vi.mocked(api.sync).mockRejectedValue(new Error('network-failure'));
+    vi.mocked(api.sync).mockRejectedValue(Object.assign(new Error('offline'), { code: 'network-failure' }));
     const connection = new ActualConnection();
-    const result = expect(connection.sync()).rejects.toThrow('network-failure');
+    const result = expect(connection.sync()).rejects.toThrow('offline');
     await vi.runAllTimersAsync();
     await result;
     expect(api.sync).toHaveBeenCalledTimes(3);
@@ -74,7 +74,9 @@ describe('NAS reliability source ports', () => {
 
   it('reopens SDK handles before retrying a failed budget download', async () => {
     vi.useFakeTimers();
-    vi.mocked(api.downloadBudget).mockRejectedValueOnce(new Error('network-failure'));
+    vi.mocked(api.downloadBudget).mockRejectedValueOnce(
+      Object.assign(new Error('offline'), { code: 'network-failure' })
+    );
     const connection = new ActualConnection();
     const result = connection.ensureReady();
     await vi.runAllTimersAsync();
@@ -87,7 +89,7 @@ describe('NAS reliability source ports', () => {
 
   it('does not retry validation failures', async () => {
     const operation = vi.fn().mockRejectedValue(new Error('invalid data'));
-    await expect(retryNetwork(operation)).rejects.toThrow('invalid data');
+    await expect(retryActualOperation('sync', operation)).rejects.toThrow('invalid data');
     expect(operation).toHaveBeenCalledTimes(1);
   });
 
@@ -101,4 +103,16 @@ describe('NAS reliability source ports', () => {
     await connection.ensureReady();
     expect(api.downloadBudget).toHaveBeenCalledWith('explicit-cloud-id', undefined);
   });
+});
+
+it('retries login once after shutting down the failed SDK session', async () => {
+  vi.useFakeTimers();
+  vi.mocked(api.init).mockRejectedValueOnce({ code: 'network-failure' });
+  const connection = new ActualConnection();
+  const result = connection.ensureReady();
+  await vi.runAllTimersAsync();
+  await result;
+  expect(api.init).toHaveBeenCalledTimes(2);
+  expect(api.shutdown).toHaveBeenCalledTimes(1);
+  await connection.drainAndClose();
 });
