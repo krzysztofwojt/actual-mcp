@@ -334,6 +334,13 @@ url = "http://localhost:3000"
 
 Point Codex at the same port you pass to `npm start -- --sse --port <PORT>`.
 
+## Reproducible Actual SDK patches
+
+`npm ci` applies the versioned patch in `patches/` using `patch-package` and fails
+if it cannot be applied. Actual API/core are pinned to 26.9.0 to match the NAS
+snapshot. The patch preserves bounded binary sync requests and split parent-field
+handling. Build history and source reconciliation: [NAS notes](deploy/nas-20260930/README.md).
+
 ## Development
 
 For development with auto-rebuild:

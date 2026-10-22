@@ -12,7 +12,8 @@
   "files": [
     "build",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "patches"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
@@ -30,14 +31,16 @@
     "format:check": "prettier --check .",
     "type-check": "tsc --noEmit",
     "quality": "npm run lint && npm run format:check && npm run type-check",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "postinstall": "patch-package --error-on-fail"
   },
   "dependencies": {
-    "@actual-app/api": "26.8.1",
-    "@actual-app/core": "26.8.1",
+    "@actual-app/api": "26.9.0",
+    "@actual-app/core": "26.9.0",
     "@modelcontextprotocol/sdk": "1.27.1",
     "dotenv": "17.4.2",
     "express": "5.2.1",
+    "patch-package": "8.0.1",
     "zod": "4.4.3",
     "zod-to-json-schema": "3.25.2"
   },

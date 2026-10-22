@@ -22,6 +22,7 @@ import {
   initActualApi,
   shutdownActualApi,
   updateTransaction,
+  withSyncedRead,
 } from './actual-api.js';
 
 describe('initActualApi syncing', () => {
@@ -408,5 +409,19 @@ describe('initActualApi syncing', () => {
         { id: 'child-b', amount: -600, category: 'shared-category', payee: 'payee-b' },
       ],
     });
+  });
+});
+
+describe('request scoped freshness', () => {
+  it('syncs once per read request, including nested reads', async () => {
+    vi.mocked(api.getBudgets).mockResolvedValue([{ id: 'budget-1' }] as never);
+    await initActualApi();
+    vi.mocked(api.sync).mockClear();
+    await withSyncedRead(async () => {
+      await initActualApi();
+      await initActualApi();
+    });
+    expect(api.sync).toHaveBeenCalledTimes(1);
+    await shutdownActualApi();
   });
 });

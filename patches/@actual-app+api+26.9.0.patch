@@ -1,0 +1,85 @@
+diff --git a/node_modules/@actual-app/api/dist/index.js b/node_modules/@actual-app/api/dist/index.js
+index 6c633d2..d16c74e 100644
+--- a/node_modules/@actual-app/api/dist/index.js
++++ b/node_modules/@actual-app/api/dist/index.js
+@@ -60133,24 +60133,32 @@ async function patch(url, data, headers = {}, timeout = null) {
+ 	return res.data;
+ }
+ async function postBinary(url, data, headers) {
++	const configuredTimeout = Number(process.env.ACTUAL_SYNC_REQUEST_TIMEOUT_MS);
++	const timeoutMs = Number.isFinite(configuredTimeout) && configuredTimeout > 0 ? configuredTimeout : 15000;
++	const controller = new AbortController();
++	const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+ 	let res;
+ 	try {
+ 		res = await fetch$1(url, {
+ 			method: "POST",
+ 			body: Buffer.from(data),
++			signal: controller.signal,
+ 			headers: {
+ 				"Content-Type": "application/actual-sync",
+ 				...headers
+ 			}
+ 		});
+-	} catch (err) {
+-		throw new PostError("network-failure", void 0, { cause: err });
+-	}
+ 	let buffer;
+ 	if (res.arrayBuffer) buffer = Buffer.from(await res.arrayBuffer());
+ 	else buffer = await res.buffer();
+ 	throwIfNot200(res, buffer.toString());
+ 	return buffer;
++	} catch (err) {
++		if (err instanceof PostError) throw err;
++		throw new PostError("network-failure", void 0, { cause: err });
++	} finally {
++		clearTimeout(timeoutId);
++	}
+ }
+ function get$1(url, opts) {
+ 	return fetch$1(url, opts).then((res) => res.text());
+@@ -108475,6 +108483,7 @@ var Action = class {
+ 				let cellValue;
+ 				if (fieldValues[key] === void 0 || fieldValues[key] === null || typeof fieldValues[key] === "object") cellValue = "";
+ 				else cellValue = fieldValues[key];
++				if (key.startsWith("parent_") && typeof cellValue === "string") cellValue = `'${cellValue}`;
+ 				hfInstance.addNamedExpression(key, cellValue);
+ 			}
+ 			hfInstance.setCellContents({
+@@ -109111,6 +109120,10 @@ function execSplitActions(actions, transaction) {
+ 			newTransactions = data;
+ 		}
+ 		newTransactions[splitTransactionIndex].parent_amount = transaction.amount;
++		newTransactions[splitTransactionIndex].parent_notes = transaction.notes ?? "";
++		newTransactions[splitTransactionIndex].parent_imported_payee = transaction.imported_payee ?? "";
++		newTransactions[splitTransactionIndex].parent_payee = transaction.payee ?? "";
++		newTransactions[splitTransactionIndex].parent_account = transaction.account ?? "";
+ 		newTransactions[splitTransactionIndex].balance = transaction.balance;
+ 		newTransactions[splitTransactionIndex]._balanceOfPrefetched = transaction._balanceOfPrefetched;
+ 		action.exec(newTransactions[splitTransactionIndex]);
+@@ -109854,11 +109867,23 @@ async function finalizeTransactionForRules(trans) {
+ 	if ("balance" in trans) delete trans.balance;
+ 	if ("category_group" in trans) delete trans.category_group;
+ 	if ("_balanceOfPrefetched" in trans) delete trans._balanceOfPrefetched;
+-	if ("parent_amount" in trans) delete trans.parent_amount;
++	for (const field of [
++		"parent_amount",
++		"parent_notes",
++		"parent_imported_payee",
++		"parent_payee",
++		"parent_account"
++	]) if (field in trans) delete trans[field];
+ 	if (trans.subtransactions?.length) trans.subtransactions.forEach((stx) => {
+ 		if ("balance" in stx) delete stx.balance;
+ 		if ("_balanceOfPrefetched" in stx) delete stx._balanceOfPrefetched;
+-		if ("parent_amount" in stx) delete stx.parent_amount;
++		for (const field of [
++			"parent_amount",
++			"parent_notes",
++			"parent_imported_payee",
++			"parent_payee",
++			"parent_account"
++		]) if (field in stx) delete stx[field];
+ 	});
+ 	return trans;
+ }

@@ -4,7 +4,7 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema, Tool } from '@modelcontextprotocol/sdk/types.js';
-import { syncActual } from '../actual-api.js';
+import { withSyncedRead } from '../actual-api.js';
 import { executeMutation, withoutOperationId } from '../core/runtime/operation-runtime.js';
 import { withBudgetLock } from '../core/runtime/operation-queue.js';
 import { error, errorFromCatch } from '../utils/response.js';
@@ -137,9 +137,8 @@ export const setupTools = (server: Server, enableWrite: boolean): void => {
       return await withBudgetLock(async () => {
         const args = (rawArgs ?? {}) as Record<string, unknown>;
         if (!writeToolNames.has(name)) {
-          await syncActual();
           // @ts-expect-error: Argument type is handled by the tool schema.
-          return tool.handler(args);
+          return withSyncedRead(() => tool.handler(args));
         }
         if (typeof args.operationId !== 'string' || args.operationId.length < 8) {
           return error('operationId is required for every mutating tool and must contain at least 8 characters');

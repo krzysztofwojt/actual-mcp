@@ -2,6 +2,13 @@ import * as api from '@actual-app/api';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import {
+  clearActualReady,
+  markActualReady,
+  retrySync,
+  downloadBudgetWithRetry,
+} from './core/connection/nas-reliability.js';
 import { BudgetFile, TransactionData, UpdateTransactionData } from './types.js';
 import { APIAccountEntity, APICategoryEntity, APICategoryGroupEntity, APIPayeeEntity } from '@actual-app/api/models';
 import { RuleEntity, TransactionEntity } from '@actual-app/core/types/models';
@@ -23,6 +30,20 @@ let initialized = false;
 let initializing = false;
 let initializationError: Error | null = null;
 let lastSyncAt = 0;
+const syncedReadScope = new AsyncLocalStorage<boolean>();
+clearActualReady();
+
+async function syncWithRetry(): Promise<void> {
+  await retrySync();
+  lastSyncAt = Date.now();
+  markActualReady();
+}
+
+/** One fresh sync for an entire read request; direct API callers still refresh. */
+export async function withSyncedRead<T>(operation: () => Promise<T>): Promise<T> {
+  await syncActual();
+  return syncedReadScope.run(true, operation);
+}
 
 /**
  * How long downloaded data is considered fresh, in milliseconds.
@@ -54,8 +75,7 @@ async function syncIfStale(): Promise<void> {
   if (Date.now() - lastSyncAt < ttl) return;
 
   try {
-    await api.sync();
-    lastSyncAt = Date.now();
+    await syncWithRetry();
   } catch (error) {
     console.error('Failed to sync with Actual server:', error);
     throw error;
@@ -65,8 +85,7 @@ async function syncIfStale(): Promise<void> {
 /** Force a synchronization with Actual Server regardless of the configured TTL. */
 export async function syncActual(): Promise<void> {
   if (!initialized) await initActualApi();
-  await api.sync();
-  lastSyncAt = Date.now();
+  await syncWithRetry();
 }
 
 /**
@@ -74,7 +93,7 @@ export async function syncActual(): Promise<void> {
  */
 export async function initActualApi(): Promise<void> {
   if (initialized) {
-    await syncIfStale();
+    if (!syncedReadScope.getStore()) await syncIfStale();
     return;
   }
   if (initializing) {
@@ -115,7 +134,8 @@ export async function initActualApi(): Promise<void> {
     }
     if (!budgetId) throw new Error('ACTUAL_BUDGET_ID_MISSING');
     console.error(`Loading budget: ${budgetId}`);
-    await api.downloadBudget(
+    await downloadBudgetWithRetry(
+      initConfig,
       budgetId,
       process.env.ACTUAL_BUDGET_ENCRYPTION_PASSWORD
         ? {
@@ -125,6 +145,8 @@ export async function initActualApi(): Promise<void> {
     );
 
     initialized = true;
+    initializationError = null;
+    markActualReady();
     lastSyncAt = Date.now();
     console.error('Actual Budget API initialized successfully');
   } catch (error) {
@@ -151,9 +173,7 @@ export async function shutdownActualApi(): Promise<void> {
   }
 }
 
-// ----------------------------
-// FETCH
-// ----------------------------
+// Fetch operations
 
 /**
  * Get all accounts (ensures API is initialized)
