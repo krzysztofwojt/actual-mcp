@@ -3,6 +3,7 @@ import * as api from '@actual-app/api';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { configureActualHttp, closeActualHttp } from './actual-http.js';
 import { retryNetwork } from './reliability.js';
 import { BudgetFile } from '../../types.js';
 
@@ -217,6 +218,7 @@ export class ActualConnection {
           console.error('Error shutting down Actual Budget API:', err);
         }
       }
+      await closeActualHttp();
       this.state = 'closed';
       this.setReady(false);
       this.lastSyncAt = 0;
@@ -240,6 +242,7 @@ export class ActualConnection {
     this.apiOpened = true;
     const initConfig = buildInitConfig(dataDir);
     try {
+      configureActualHttp();
       this.actualLib = await api.init(initConfig);
       const budgets: BudgetFile[] = await api.getBudgets();
       if ((!budgets || budgets.length === 0) && !process.env.ACTUAL_BUDGET_SYNC_ID?.trim()) {
@@ -284,6 +287,7 @@ export class ActualConnection {
       } catch (shutdownErr) {
         console.error('Error shutting down Actual Budget API after failed init:', shutdownErr);
       }
+      await closeActualHttp();
       throw err;
     }
     console.error('Actual Budget API initialized successfully');
