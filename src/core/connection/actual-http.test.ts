@@ -6,6 +6,8 @@ import { Agent, getGlobalDispatcher, setGlobalDispatcher } from 'undici';
 import { afterEach, expect, it, vi } from 'vitest';
 // The SDK caches built-in fetch before configureActualHttp installs a dispatcher.
 import * as api from '@actual-app/api';
+import { initWithRetry } from './nas-reliability.js';
+import { retryActualOperation } from './actual-retry.js';
 import { actualHttpOptions, closeActualHttp, configureActualHttp, inActualHttpAttempt } from './actual-http.js';
 
 const servers: Server[] = [];
@@ -113,4 +115,58 @@ it('caps server hints and rejects invalid or unsafe keep-alive configuration', (
   }
   vi.stubEnv('ACTUAL_HTTP_KEEPALIVE_TIMEOUT_MS', '1500');
   expect(actualHttpOptions().keepAliveMaxTimeout).toBe(1500);
+});
+
+it('recovers the same socket-closure scenario on a fresh connection during safe sync retry', async () => {
+  const seen = new Set<Socket>();
+  const origin = await listen((request, response) => {
+    if (seen.has(request.socket)) {
+      request.socket.destroy();
+      return;
+    }
+    seen.add(request.socket);
+    response.end('ok');
+  });
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  vi.stubEnv('ACTUAL_SERVER_URL', origin);
+  vi.stubEnv('ACTUAL_HTTP_RETRY_DELAY_MS', '1');
+  configureActualHttp();
+  const post = async (): Promise<string> =>
+    (await fetch(origin, { method: 'POST', body: 'same-sync-envelope' })).text();
+  await post();
+  await tick();
+  const run = vi.fn(post);
+  expect(await retryActualOperation('sync', run)).toBe('ok');
+  expect(run).toHaveBeenCalledTimes(2);
+  expect(seen.size).toBe(2);
+  expect(console.error).toHaveBeenCalledWith(expect.stringContaining('UND_ERR_SOCKET'));
+});
+
+it('retries the real SDK login on a new connection despite the SDK discarding the original cause', async () => {
+  const seen: Socket[] = [];
+  const origin = await listen((request, response) => {
+    seen.push(request.socket);
+    if (seen.length === 1) {
+      request.socket.destroy();
+      return;
+    }
+    response.setHeader('Content-Type', 'application/json');
+    response.end(JSON.stringify({ status: 'ok', data: { token: 'local-fixture' } }));
+  });
+  const log = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+  vi.stubEnv('ACTUAL_SERVER_URL', origin);
+  vi.stubEnv('ACTUAL_HTTP_RETRY_DELAY_MS', '1');
+  configureActualHttp();
+  await initWithRetry({ dataDir: process.env.ACTUAL_DATA_DIR!, serverURL: origin, password: 'local-fixture' });
+  expect(seen).toHaveLength(2);
+  expect(seen[1]).not.toBe(seen[0]);
+  expect(log).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(log.mock.calls[0][0])).toMatchObject({ operation: 'login', code: 'UND_ERR_SOCKET' });
+});
+it('bounds stalled response headers with the configured transport timeout', async () => {
+  const origin = await listen((request) => request.resume());
+  vi.stubEnv('ACTUAL_SERVER_URL', origin);
+  vi.stubEnv('ACTUAL_HTTP_REQUEST_TIMEOUT_MS', '50');
+  configureActualHttp();
+  await expect(fetch(origin, { method: 'POST' })).rejects.toMatchObject({ cause: { code: 'UND_ERR_HEADERS_TIMEOUT' } });
 });

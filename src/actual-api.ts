@@ -8,6 +8,7 @@ import {
   clearActualReady,
   markActualReady,
   retrySync,
+  initWithRetry,
   downloadBudgetWithRetry,
 } from './core/connection/nas-reliability.js';
 import { BudgetFile, TransactionData, UpdateTransactionData } from './types.js';
@@ -75,12 +76,7 @@ async function syncIfStale(): Promise<void> {
   if (ttl < 0) return;
   if (Date.now() - lastSyncAt < ttl) return;
 
-  try {
-    await syncWithRetry();
-  } catch (error) {
-    console.error('Failed to sync with Actual server:', error);
-    throw error;
-  }
+  await syncWithRetry();
 }
 
 /** Force a synchronization with Actual Server regardless of the configured TTL. */
@@ -118,7 +114,7 @@ export async function initActualApi(): Promise<void> {
     // Reason: InitConfig is a discriminated union in 26.x — NoServerConfig forbids serverURL/password
     const initConfig = serverURL ? { dataDir, serverURL, password: password ?? '' } : { dataDir };
     configureActualHttp();
-    await api.init(initConfig);
+    await initWithRetry(initConfig);
 
     const budgets: BudgetFile[] = await api.getBudgets();
     if (!budgets || budgets.length === 0) {
@@ -152,7 +148,6 @@ export async function initActualApi(): Promise<void> {
     lastSyncAt = Date.now();
     console.error('Actual Budget API initialized successfully');
   } catch (error) {
-    console.error('Failed to initialize Actual Budget API:', error);
     initializationError = error instanceof Error ? error : new Error(String(error));
     throw initializationError;
   } finally {
@@ -164,7 +159,10 @@ export async function initActualApi(): Promise<void> {
  * Shutdown the Actual Budget API
  */
 export async function shutdownActualApi(): Promise<void> {
-  if (!initialized) return;
+  if (!initialized) {
+    await closeActualHttp();
+    return;
+  }
   try {
     await api.shutdown();
   } catch (err) {
@@ -172,6 +170,7 @@ export async function shutdownActualApi(): Promise<void> {
   } finally {
     initialized = false;
     lastSyncAt = 0;
+    clearActualReady();
     await closeActualHttp();
   }
 }

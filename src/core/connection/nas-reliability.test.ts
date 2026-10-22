@@ -1,7 +1,7 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 vi.mock('@actual-app/api', () => ({ sync: vi.fn(), downloadBudget: vi.fn(), shutdown: vi.fn(), init: vi.fn() }));
 import * as api from '@actual-app/api';
-import { retrySync, downloadBudgetWithRetry, isRetryableActualNetworkError } from './nas-reliability.js';
+import { retrySync, downloadBudgetWithRetry, isRetryableActualNetworkError, initWithRetry } from './nas-reliability.js';
 
 beforeEach(() => {
   vi.resetAllMocks();
@@ -23,7 +23,7 @@ it('coalesces concurrent sync calls', async () => {
   expect(api.sync).toHaveBeenCalledTimes(1);
 });
 it('retries a network failure and resets the failed download session', async () => {
-  vi.mocked(api.downloadBudget).mockRejectedValueOnce(new Error('network-failure'));
+  vi.mocked(api.downloadBudget).mockRejectedValueOnce(Object.assign(new Error('offline'), { code: 'network-failure' }));
   const result = downloadBudgetWithRetry({ dataDir: '/tmp/unused-mock' }, 'budget', undefined);
   await vi.runAllTimersAsync();
   await result;
@@ -36,4 +36,13 @@ it('propagates non-network sync failures without retry', async () => {
   await expect(retrySync()).rejects.toThrow('invalid budget');
   expect(api.sync).toHaveBeenCalledTimes(1);
   expect(isRetryableActualNetworkError(null)).toBe(false);
+});
+
+it('retries login network failures after resetting the SDK', async () => {
+  vi.mocked(api.init).mockRejectedValueOnce(Object.assign(new Error('offline'), { code: 'network-failure' }));
+  const result = initWithRetry({ dataDir: '/tmp/unused-mock' });
+  await vi.runAllTimersAsync();
+  await result;
+  expect(api.init).toHaveBeenCalledTimes(2);
+  expect(api.shutdown).toHaveBeenCalledTimes(1);
 });

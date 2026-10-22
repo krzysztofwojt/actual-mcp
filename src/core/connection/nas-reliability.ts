@@ -2,9 +2,9 @@ import * as api from '@actual-app/api';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { actualNetworkErrorCode, retryActualOperation } from './actual-retry.js';
 
 let inFlightSync: Promise<void> | null = null;
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 function readyFile(): string {
   return path.join(process.env.ACTUAL_DATA_DIR || path.resolve(os.homedir() || '.', '.actual'), '.actual-mcp-ready');
 }
@@ -24,61 +24,37 @@ export function markActualReady(): void {
   }
 }
 export function isRetryableActualNetworkError(error: unknown): boolean {
-  const value = error as Record<string, unknown> | null;
-  const message = [value?.name, value?.type, value?.code, value?.message, value?.reason]
-    .filter(Boolean)
-    .map(String)
-    .join(' ')
-    .toLowerCase();
-  return /network|socket|timeout|econn|fetch|connection|temporar|other side closed/.test(message);
+  return actualNetworkErrorCode(error) !== undefined;
 }
 export async function retrySync(): Promise<void> {
   if (inFlightSync) return inFlightSync;
-  inFlightSync = (async () => {
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        await api.sync();
-        markActualReady();
-        return;
-      } catch (error) {
-        lastError = error;
-        clearActualReady();
-        console.error('Actual server sync failed (on-demand, attempt ' + (attempt + 1) + '/3):', error);
-        if (!isRetryableActualNetworkError(error) || attempt === 2) break;
-        await sleep(500 * (attempt + 1));
-      }
-    }
-    throw lastError;
-  })();
+  inFlightSync = retryActualOperation('sync', () => api.sync());
   try {
-    return await inFlightSync;
+    await inFlightSync;
+    markActualReady();
+  } catch (error) {
+    clearActualReady();
+    throw error;
   } finally {
     inFlightSync = null;
   }
+}
+export async function initWithRetry(initConfig: Parameters<typeof api.init>[0]): Promise<void> {
+  await retryActualOperation('login', async (attempt) => {
+    if (attempt > 1) await api.shutdown();
+    await api.init(initConfig);
+  });
 }
 export async function downloadBudgetWithRetry(
   initConfig: Parameters<typeof api.init>[0],
   budgetId: string,
   downloadOptions: Parameters<typeof api.downloadBudget>[1]
 ): Promise<void> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      await api.downloadBudget(budgetId, downloadOptions);
-      return;
-    } catch (error) {
-      lastError = error;
-      console.error('Actual Budget download failed (attempt ' + (attempt + 1) + '/3):', error);
-      if (!isRetryableActualNetworkError(error) || attempt === 2) break;
-      try {
-        await api.shutdown();
-      } catch {
-        /* reset a failed session */
-      }
-      await sleep(750 * (attempt + 1));
+  await retryActualOperation('download', async (attempt) => {
+    if (attempt > 1) {
+      await api.shutdown();
       await api.init(initConfig);
     }
-  }
-  throw lastError;
+    await api.downloadBudget(budgetId, downloadOptions);
+  });
 }
