@@ -303,7 +303,7 @@ describe('ActualConnection.drainAndClose', () => {
 
     try {
       await expect(conn.drainAndClose()).resolves.toBeUndefined();
-      expect(consoleError).toHaveBeenCalledWith('Error shutting down Actual Budget API:', shutdownError);
+      expect(consoleError).toHaveBeenCalledWith('Error shutting down Actual Budget API');
       expect((conn as unknown as { state: string }).state).toBe('closed');
       await expect(conn.ensureReady()).rejects.toThrow(/closed/);
     } finally {

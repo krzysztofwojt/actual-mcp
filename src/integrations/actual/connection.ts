@@ -70,8 +70,8 @@ export class ActualConnection {
     try {
       if (ready) fs.writeFileSync(marker, new Date().toISOString());
       else fs.rmSync(marker, { force: true });
-    } catch (error) {
-      console.error('Could not update readiness marker:', error);
+    } catch {
+      console.error('Could not update readiness marker');
     }
   }
 
@@ -214,8 +214,8 @@ export class ActualConnection {
       if (this.apiOpened) {
         try {
           await api.shutdown();
-        } catch (err) {
-          console.error('Error shutting down Actual Budget API:', err);
+        } catch {
+          console.error('Error shutting down Actual Budget API');
         }
       }
       await closeActualHttp();
@@ -284,8 +284,8 @@ export class ActualConnection {
         await api.shutdown();
         this.apiOpened = false;
         this.actualLib = null;
-      } catch (shutdownErr) {
-        console.error('Error shutting down Actual Budget API after failed init:', shutdownErr);
+      } catch {
+        console.error('Error shutting down Actual Budget API after failed init');
       }
       await closeActualHttp();
       throw err;
