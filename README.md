@@ -430,9 +430,9 @@ Docker must be installed and running; the test suite pulls and starts the Actual
 
 ## Registry & Discovery
 
-This public fork tracks upstream while using independent versions such as `1.12.1-kwojt.1` and images at `ghcr.io/krzysztofwojt/actual-mcp`.
+This public fork tracks upstream while using independent versions such as `1.15.1-kwojt.1` and images at `ghcr.io/krzysztofwojt/actual-mcp`.
 
-- Actual Server and `@actual-app/api` are pinned together; this release uses `26.8.1`.
+- Actual Server and `@actual-app/api` are pinned together; this release uses `26.10.0`.
 - Mutations use a durable idempotency ledger and structured audit logs retained for three months.
 - Exact ID or unique case-insensitive name resolution is supported; fuzzy write matching is intentionally rejected.
 - Bank synchronization is asynchronous and rejects concurrent runs.
