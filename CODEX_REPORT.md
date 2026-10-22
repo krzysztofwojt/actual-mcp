@@ -227,3 +227,31 @@ postinstall faktycznie się wykonał. Nie zmieniano pobocznych zależności.
 - Rollback: przywrócić poprzedni obraz (bazę main 601ba68) oraz poprzednie env,
   zachowując dane i ledger/audyt. Nie usuwać katalogu budżetu i nie odwracać
   ręcznie fragmentów łatki w działającym kontenerze. Brak nowych migracji danych.
+
+
+### Poprawki 22.10 wieczór
+
+- Nieznany lub wygasły `Mcp-Session-Id` na `/` i `/mcp` zwraca HTTP 404
+  z JSON-RPC `-32001`, `Session not found`, również dla initialize ze starym ID.
+  Dotyczy POST/GET/DELETE; bearer auth nadal poprzedza sprawdzanie sesji (401).
+  Brak ID dla nie-initialize nadal daje 400; dotychczasowy fallback legacy SSE
+  dla GET bez ID z `Accept: text/event-stream` pozostaje zachowany.
+- Dodano 22 lokalne testy HTTP obu adresów: nieznana sesja, pierwszeństwo auth,
+  brak ID, initialize bez ID, poprawna sesja dla POST/GET/DELETE i wygaśnięcie po DELETE.
+  API Actual, warmup i dotenv są mockowane; listener używa wyłącznie loopback.
+- `serverInfo.version` jest czytane z `package.json` względem `import.meta.url`.
+  Test initialize porównuje faktycznie reklamowaną wersję z pakietem.
+  Odczyt działa z `src/` i `build/`; Dockerfile już kopiuje `package.json`
+  do `/app`, więc nie wymagał zmiany. Lokalny handshake przez InMemoryTransport
+  z `build/server.js` potwierdził `1.15.1-kwojt.2` bez połączeń z Actual.
+- Podbito `package.json`, oba wpisy wersji pakietu w `package-lock.json`
+  i wszystkie trzy pola wersji `server.json` do `1.15.1-kwojt.2`.
+  Po usunięciu starego literału z `src/server.ts` wyszukiwanie wersji w `src/`
+  nie wykazało dalszych literałów z zakresu 1.10–1.19; wersje rejestru pozostają
+  jawne i są kontrolowane istniejącym testem synchronizacji.
+- Node 26.3.1 oraz Node 24.21.0 przez `npm exec`: `npm run build`, `npm test`
+  (104 pliki, 619 testów), `npm run type-check`, `npm run lint` — wszystkie PASS.
+  Node 24 korzystał z istniejącego `node_modules`, bez reinstalacji.
+  Logi: `/private/tmp/actual-v2-evening-*.log`; `git diff --check` — PASS.
+- Zmiany zapisano w trzech osobnych commitach na `codex/actual-conn-v2`.
+  Bez pushowania, wdrożenia, połączeń z kiciserwerem lub usługami produkcyjnymi.
