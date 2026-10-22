@@ -1,8 +1,14 @@
+import { readFileSync } from 'node:fs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SetLevelRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { setupPrompts } from './prompts.js';
 import { setupResources } from './resources.js';
 import { setupTools } from './tools/index.js';
+
+// Reason: src/ and build/ share the same parent package.json, including in Docker.
+const { version } = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
+  version: string;
+};
 
 interface CreateServerOptions {
   enableWrite: boolean;
@@ -18,7 +24,7 @@ export function createServer(options: CreateServerOptions): Server {
   const server = new Server(
     {
       name: 'Actual Budget',
-      version: '1.12.1-kwojt.4',
+      version,
     },
     {
       capabilities: {

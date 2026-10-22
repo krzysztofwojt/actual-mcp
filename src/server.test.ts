@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { describe, expect, it, vi } from 'vitest';
 import { createServer } from './server.js';
@@ -19,6 +22,21 @@ import { setupTools } from './tools/index.js';
 import { setupPrompts } from './prompts.js';
 
 describe('createServer', () => {
+  it('advertises the package.json version in the initialize response', async () => {
+    const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+    const server = createServer({ enableWrite: false });
+    const client = new Client({ name: 'version-test', version: '1' });
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    try {
+      await server.connect(serverTransport);
+      await client.connect(clientTransport);
+      expect(client.getServerVersion()?.version).toBe(pkg.version);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
   it('returns a configured Server instance', () => {
     const server = createServer({ enableWrite: false });
 
